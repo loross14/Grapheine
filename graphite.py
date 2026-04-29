@@ -47,10 +47,15 @@ def _canon_ok(vault_root: Path) -> bool:
     return any(str(rv).startswith(str(r.resolve())) for r in FORGE_ROOTS)
 
 
+_SLUG_BAD = re.compile(r'[\\:*?"<>|]')
+
+
 def _slug(name: str) -> str:
-    """Filesystem-safe slug from a wikilink target."""
-    s = re.sub(r"[\\/:*?\"<>|]", "_", name).strip()
-    return s or "untitled"
+    """Filesystem-safe slug from a wikilink target. Preserves '/' so that
+    targets like `daily/2026-02-26` map to `daily/2026-02-26.md` (subdir),
+    not `daily_2026-02-26.md` (flattened to root)."""
+    parts = [_SLUG_BAD.sub("_", seg).strip() or "untitled" for seg in name.split("/")]
+    return "/".join(parts)
 
 
 _NOT_A_LINK = re.compile(r'[()=!,*$"<>{}]|\.\.\.|->|\|')
@@ -120,7 +125,10 @@ def _propose_stubs(vaults, limit=None):
         sources = sorted(unresolved[tgt], key=str)
         title = tgt.strip()
         path = Path(vault_root) / f"{_slug(title)}.md"
-        backlinks = "\n".join(f"- [[{G.rel(s, [vault_root]).rsplit('.', 1)[0]}]]" for s in sources)
+        # Backlinks use bare stem so grapheine's stem-keyed resolver can
+        # resolve them. Path-prefixed forms like [[subdir/foo]] are NOT
+        # resolved by grapheine and would re-introduce unresolved noise.
+        backlinks = "\n".join(f"- [[{Path(s).stem}]]" for s in sources)
         body = STUB_TEMPLATE.format(
             title=title,
             n=len(sources),
@@ -170,7 +178,9 @@ def _propose_bonds(vaults, k=3):
         if not scored:
             continue
         top = scored[:k]
-        op_link = G.rel(op, vaults).rsplit(".", 1)[0]
+        # Use bare stem; grapheine's resolver is keyed by stem and won't
+        # resolve path-prefixed forms like [[subdir/foo]].
+        op_link = Path(op).stem
         for n_share, q, share in top:
             proposals.append({
                 "action": "append_link",

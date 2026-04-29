@@ -83,6 +83,28 @@ def test_looks_like_a_link_rejects_placeholders_and_paths():
     assert not gp._looks_like_a_link("/abs/path")
 
 
+def test_slug_preserves_subdirectories():
+    """Targets like `daily/2026-02-26` should map to a subdir, not be flattened."""
+    assert gp._slug("daily/2026-02-26") == "daily/2026-02-26"
+    assert gp._slug("projects/wolverine") == "projects/wolverine"
+    # Forbidden chars within a segment still get replaced
+    assert gp._slug('a/b:c') == "a/b_c"
+    assert gp._slug("plain") == "plain"
+
+
+def test_stub_path_for_subdir_target(tmp_path):
+    """A subdir-shaped wikilink target should produce a path nested in the vault."""
+    reset_caches()
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "src.md").write_text("[[daily/2026-04-28]]\n", encoding="utf-8")
+    out, _, rc = run(["stub", f"vault={vault}", "json"])
+    assert rc == 0
+    proposals = json.loads(out)
+    paths = [p["path"] for p in proposals]
+    assert any(p.endswith("daily/2026-04-28.md") for p in paths)
+
+
 def test_looks_like_a_link_rejects_bare_ints_and_empty():
     assert not gp._looks_like_a_link("10")
     assert not gp._looks_like_a_link("")
