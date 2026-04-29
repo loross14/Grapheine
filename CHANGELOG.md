@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-04-28
+
+The graphite extension. v0.2 made cross-source wikilinks resolve and
+scored bridges via Shannon-entropy × degree (a structural stand-in for
+"interlayer coupling"). v0.3 makes the interlayer coupling t⊥ an
+**explicit, sweepable parameter** of the layered Hamiltonian and adds
+**IPR localization** of the algebraic-connectivity eigenvector as the
+diagnostic for coupling-driven spectral pinch points.
+
+The algebra that transfers from stacked graphene:
+
+```
+H = (⊕_l H_l)  +  t⊥ · C
+```
+
+`H_l` = the existing within-layer adjacency operator; `C` = the
+cross-vault wikilink adjacency between layers; `t⊥` = the interlayer
+coupling weight. The Fiedler eigenvector's IPR (Σ ψᵢ⁴, normalized) tells
+you which notes the algebraic-connectivity mode localizes on as t⊥
+varies. What does *not* transfer: twist angle, moiré supercells, magic
+angle. Those need lattice geometry the source folders don't have. The
+operator is the operator; the lattice is your wikilink graph.
+
+### Added
+
+- **`graph layered`** command. Multi-vault only.
+  - `tperp=<f>` for a single coupling.
+  - `sweep=lo,hi,steps` to scan the coupling and emit a curve.
+  - `top=<n>` to print the most localized notes by Fiedler magnitude.
+  - `verbose` prints localized notes at the peak-IPR coupling during a sweep.
+  - Reports `lam_max`, `fiedler(λ_2)`, `IPR`, and `n·IPR` for every step.
+- **`vaults=p1,p2,p3` argument** (currently scoped to `graph layered`).
+  Comma-separated explicit paths so users without an Obsidian registry
+  can still build a stack from any directories.
+- **`build_layered_graph(vaults)` helper.** Returns
+  `(nodes, idx, intra, inter, vault_of)` — a clean separation of intra-
+  vs inter-layer edges that downstream callers can reuse.
+- **`_weighted_lap_spectrum(intra, inter, tperp, iters, tol)` helper.**
+  Pure-stdlib weighted-Laplacian power iteration with the same shifted-
+  deflated phase-2 used by `graph spectrum`. Returns `(λ_max, λ_2,
+  Fiedler eigenvector)`.
+- **`_ipr(vec)` helper.** Inverse participation ratio of a
+  (re-)normalized eigenvector. Range `[1/n, 1]`.
+- **6 new tests**: requires multi-vault, runs on a 2-vault fixture,
+  emits a sweep curve, IPR identity check on uniform/single-node/zero
+  vectors, sweep parser correctness, and `build_layered_graph` shape on
+  a wikilink-disconnected pair.
+
+### Changed
+
+- Top-level docstring: `graph layered` added to the command list and
+  the stack-mode prose now flags it as the explicit-coupling extension.
+- README "Multi-source stack" section grew a `graph layered` subsection
+  with a meaning-of-each-field table and an explicit non-claim about
+  magic-angle / moiré (operator transfers; lattice doesn't).
+
 ## [0.2.1] — 2026-04-28
 
 Chemistry-claims correction. v0.2.0 over-softened in response to F3's

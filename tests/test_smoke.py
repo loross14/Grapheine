@@ -241,3 +241,104 @@ def test_version():
     out = run(["--version"])
     assert "graphene" in out
     assert dg.__version__ in out
+
+
+# ── v0.3 layered (graphite) ─────────────────────────────────────────────────
+
+
+def make_two_vaults(root: Path) -> tuple[Path, Path]:
+    """Two tiny vaults that share two stems and have a cross-vault wikilink."""
+    a = root / "vault_a"
+    b = root / "vault_b"
+    write(a / "alpha.md", "# Alpha A\n[[beta]] [[shared]]\n")
+    write(a / "beta.md", "# Beta A\n[[alpha]]\n")
+    write(a / "shared.md", "# Shared in A\n[[alpha]]\n")
+    write(a / "bridge.md", "# Bridge A\n[[only-in-b]]\n")  # cross-vault wikilink
+    write(b / "alpha.md", "# Alpha B\n[[beta]] [[shared]]\n")
+    write(b / "beta.md", "# Beta B\n[[alpha]]\n")
+    write(b / "shared.md", "# Shared in B\n[[alpha]]\n")
+    write(b / "only-in-b.md", "# Only B\nNo outgoing.\n")
+    return a, b
+
+
+def test_layered_requires_multi_vault(tmp_path):
+    reset_caches()
+    vault = make_vault(tmp_path / "vault")
+    import sys, io
+    saved = sys.argv[:]
+    sys.argv = ["graphene", "graph", "layered", f"vault={vault}"]
+    err = io.StringIO()
+    from contextlib import redirect_stderr
+    try:
+        with redirect_stderr(err):
+            rc = dg.main()
+    finally:
+        sys.argv = saved
+    assert rc == 2
+    assert "multi-vault" in err.getvalue()
+
+
+def test_layered_runs_on_two_vault_stack(tmp_path):
+    reset_caches()
+    a, b = make_two_vaults(tmp_path)
+    out = run(["graph", "layered", f"vaults={a},{b}", "tperp=1.0", "top=3"])
+    assert "[LAYERED]" in out
+    assert "intra_edges=" in out
+    assert "inter_edges=" in out
+    assert "lam_max" in out
+    assert "fiedler" in out
+    assert "IPR=" in out
+
+
+def test_layered_sweep_emits_curve(tmp_path):
+    reset_caches()
+    a, b = make_two_vaults(tmp_path)
+    out = run(["graph", "layered", f"vaults={a},{b}", "sweep=0,1,3", "top=3"])
+    assert "sweep=0,1,3" in out
+    # Header columns
+    assert "tperp" in out and "lam_max" in out and "IPR" in out
+    # Three sweep rows
+    assert "0.000" in out
+    assert "0.500" in out
+    assert "1.000" in out
+    assert "peak IPR" in out
+
+
+def test_layered_zero_interlayer_warns(tmp_path):
+    """Two vaults with no shared stems and no cross-vault wikilinks: layers
+    are wikilink-disconnected, so tperp does nothing. Emit a warning line."""
+    reset_caches()
+    a = tmp_path / "iso_a"
+    b = tmp_path / "iso_b"
+    write(a / "n1.md", "# A1\n[[n2]]\n")
+    write(a / "n2.md", "# A2\n")
+    write(b / "m1.md", "# B1\n[[m2]]\n")
+    write(b / "m2.md", "# B2\n")
+    # Only way to point graphene at both is via two vault= args, but the CLI
+    # takes a single vault=; resolve_targets only returns multi for the
+    # registry-* shortcut. Test the build_layered_graph helper directly.
+    nodes, idx, intra, inter, vault_of = dg.build_layered_graph([a, b])
+    assert len(nodes) == 4
+    assert sum(len(s) for s in intra) // 2 == 2
+    assert sum(len(s) for s in inter) // 2 == 0
+
+
+def test_layered_ipr_helper():
+    # Fully delocalized: vec = (1,1,1,1)/2 — IPR = 4·(1/2)^4 = 4·1/16 = 1/4 = 1/n
+    vec = [0.5, 0.5, 0.5, 0.5]
+    assert abs(dg._ipr(vec) - 0.25) < 1e-12
+    # Fully localized: vec = (1, 0, 0, 0) — IPR = 1
+    vec = [1.0, 0.0, 0.0, 0.0]
+    assert abs(dg._ipr(vec) - 1.0) < 1e-12
+    # Zero vector — IPR = 0 (degenerate guard)
+    assert dg._ipr([0.0, 0.0, 0.0]) == 0.0
+
+
+def test_layered_parse_sweep():
+    assert dg._parse_sweep("0,2,5") == [0.0, 0.5, 1.0, 1.5, 2.0]
+    # Single step
+    assert dg._parse_sweep("0.5,1.5,1") == [0.5]
+    # Bad format
+    import pytest
+    with pytest.raises(ValueError):
+        dg._parse_sweep("0,1")

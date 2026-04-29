@@ -53,6 +53,8 @@ Graph (math layer):
   graph density                           — |E| / (|V|·(|V|-1)/2)
   graph dirac [top=<n>]                   — Dirac-point candidates
   graph spectrum [iters=<n>] [tol=<eps>]  — λ_max + Fiedler value
+  graph layered [tperp=<f>|sweep=lo,hi,steps] [top=<n>] [verbose]
+                                          — bilayer Hamiltonian + IPR localization
 
 Multi-vault stack:
   health                                  — fingerprint (vault=* aggregates)
@@ -62,9 +64,13 @@ Stack mode (vault=stack) is the stacked-bilayer Hamiltonian: each
 source is a sheet, intra-source wikilinks are intra-layer hopping,
 cross-source wikilinks are interlayer hopping. The operator form is
 exact. Cross-sheet Dirac scoring (Shannon-entropy × degree over
-sheet-membership) finds nodes that bridge layers. Twist angle, moiré
-pattern, and magic-angle flat bands are not computed — those would
-require lattice geometry the source folders don't have.
+sheet-membership) finds nodes that bridge layers. `graph layered`
+makes the interlayer coupling t⊥ explicit and sweepable, computing
+the weighted Laplacian's λ_max + Fiedler value and the inverse
+participation ratio (IPR) of the algebraic-connectivity eigenvector
+to identify coupling-driven localization regimes. Twist angle and
+moiré supercells are not computed — those need lattice geometry the
+source folders don't have. Operator algebra transfers; geometry doesn't.
 
 License: MIT. © 2026 Logan Ross.
 """
@@ -1106,6 +1112,227 @@ def cmd_graph_spectrum(kv, flags):
     return 0
 
 
+# ── layered (graphite) — bilayer Hamiltonian with explicit interlayer coupling ─
+
+def build_layered_graph(vaults):
+    """Multi-source stack as a layered tight-binding graph.
+
+    Returns (nodes, idx, intra, inter, vault_of):
+      nodes    — list[Path], canonical node order
+      idx      — dict Path → int
+      intra    — list[set[int]], intra-layer (same-vault) neighbors
+      inter    — list[set[int]], inter-layer (cross-vault) neighbors
+      vault_of — list[Path], vault of each node by index
+
+    Cross-vault wikilinks become interlayer hops; same-vault wikilinks are
+    intra-layer hops. Same operator decomposition as stacked graphene:
+    H = (⊕_l H_l) + t⊥ · C, where each H_l is the in-layer adjacency and
+    C is the interlayer adjacency. tperp scales C only.
+    """
+    forward, _, _, files, _ = collect_links(vaults)
+    nodes = list(files)
+    idx = {p: i for i, p in enumerate(nodes)}
+    vs = _as_list(vaults)
+    vault_of = [vault_for(p, vs) for p in nodes]
+    n = len(nodes)
+    intra = [set() for _ in range(n)]
+    inter = [set() for _ in range(n)]
+    for src, tgts in forward.items():
+        if src not in idx:
+            continue
+        si = idx[src]
+        for tgt in tgts:
+            if tgt == src or tgt not in idx:
+                continue
+            ti = idx[tgt]
+            same = vault_of[si] == vault_of[ti]
+            if same:
+                intra[si].add(ti)
+                intra[ti].add(si)
+            else:
+                inter[si].add(ti)
+                inter[ti].add(si)
+    return nodes, idx, intra, inter, vault_of
+
+
+def _weighted_lap_spectrum(intra, inter, tperp, iters, tol):
+    """Weighted Laplacian L = D − W. Intra weight=1, inter weight=tperp.
+    Returns (lam_max, fiedler_lambda, fiedler_vec)."""
+    n = len(intra)
+    deg = [len(intra[i]) + tperp * len(inter[i]) for i in range(n)]
+
+    def lap_apply(x):
+        out = [deg[i] * x[i] for i in range(n)]
+        for i in range(n):
+            s_intra = 0.0
+            for j in intra[i]:
+                s_intra += x[j]
+            s_inter = 0.0
+            for j in inter[i]:
+                s_inter += x[j]
+            out[i] -= s_intra + tperp * s_inter
+        return out
+
+    def norm(x):
+        return math.sqrt(sum(xi * xi for xi in x))
+
+    def normalize(x):
+        s = norm(x)
+        return [xi / s for xi in x] if s > 0 else x
+
+    def subtract_const(x):
+        m = sum(x) / n
+        return [xi - m for xi in x]
+
+    rng = random.Random(0xC0FFEE)
+    x = normalize([rng.random() - 0.5 for _ in range(n)])
+    lam_max = 0.0
+    for it in range(iters):
+        y = lap_apply(x)
+        new = sum(xi * yi for xi, yi in zip(x, y))
+        if it > 0 and abs(new - lam_max) < tol * (abs(lam_max) + 1):
+            lam_max = new
+            break
+        lam_max = new
+        x = normalize(y) if norm(y) > 0 else x
+
+    x = normalize(subtract_const([rng.random() - 0.5 for _ in range(n)]))
+    mu = 0.0
+    fiedler_vec = x
+    for it in range(iters):
+        Lx = lap_apply(x)
+        y = [lam_max * xi - lxi for xi, lxi in zip(x, Lx)]
+        y = subtract_const(y)
+        new = sum(xi * yi for xi, yi in zip(x, y))
+        if it > 0 and abs(new - mu) < tol * (abs(mu) + 1):
+            mu = new
+            x = normalize(y) if norm(y) > 0 else x
+            fiedler_vec = x
+            break
+        mu = new
+        x = normalize(y) if norm(y) > 0 else x
+        fiedler_vec = x
+
+    fiedler = lam_max - mu
+    return lam_max, fiedler, fiedler_vec
+
+
+def _ipr(vec):
+    """Inverse participation ratio of a normalized eigenvector.
+    IPR = Σ ψ_i^4 with Σ ψ_i^2 = 1.
+    1/n = fully delocalized (extended state).
+    1   = fully localized on one node."""
+    s2 = sum(v * v for v in vec)
+    if s2 <= 0:
+        return 0.0
+    return sum((v * v / s2) ** 2 for v in vec)
+
+
+def _parse_sweep(s):
+    parts = s.split(",")
+    if len(parts) != 3:
+        raise ValueError("sweep= expects lo,hi,steps (e.g. 0,2,9)")
+    lo, hi, steps = float(parts[0]), float(parts[1]), int(parts[2])
+    if steps < 2:
+        return [lo]
+    return [lo + (hi - lo) * i / (steps - 1) for i in range(steps)]
+
+
+def cmd_graph_layered(kv, flags):
+    """Layered tight-binding spectrum: bilayer/multilayer Hamiltonian with
+    explicit interlayer coupling t⊥ on cross-vault wikilinks.
+
+    Same operator algebra as stacked graphene: intra-layer hopping weight
+    = 1.0, inter-layer hopping weight = t⊥. Sweeps t⊥ to find the regime
+    where the Fiedler eigenvector localizes (high IPR) — coupling-driven
+    pinch points where the stack's algebraic connectivity bottlenecks.
+
+    Not magic-angle physics: we don't have lattice geometry, so there's
+    no twist angle and no moiré supercell. The 'localized regime' here
+    is identified by IPR of the algebraic-connectivity eigenvector, not
+    by a Bistritzer-MacDonald calculation. Operator algebra transfers;
+    geometric details don't."""
+    if "vaults" in kv:
+        # Comma-separated explicit list — works without an Obsidian registry.
+        paths = [Path(s).expanduser() for s in kv["vaults"].split(",") if s.strip()]
+        vs = [p for p in paths if p.is_dir()]
+        if len(vs) != len(paths):
+            missing = [str(p) for p in paths if not p.is_dir()]
+            print(f"vaults= contained non-directories: {missing}", file=sys.stderr)
+            return 2
+    else:
+        vs = resolve_targets(kv.get("vault") or "*")
+    if len(vs) < 2:
+        print("graph layered requires multi-vault stack (vault=stack, vault=*, or vaults=p1,p2,...)", file=sys.stderr)
+        return 2
+    nodes, idx_map, intra, inter, vault_of = build_layered_graph(vs)
+    n = len(nodes)
+    if n < 3:
+        print("(stack too small)")
+        return 0
+    intra_e = sum(len(s) for s in intra) // 2
+    inter_e = sum(len(s) for s in inter) // 2
+    iters = int(kv.get("iters", "200"))
+    tol = float(kv.get("tol", "1e-6"))
+    top = int(kv.get("top", "10"))
+
+    layers = {v: sum(1 for vo in vault_of if vo == v) for v in vs}
+    layer_str = ", ".join(f"{v.name}:{layers[v]}" for v in vs)
+
+    if "sweep" in kv:
+        try:
+            tperps = _parse_sweep(kv["sweep"])
+        except ValueError as e:
+            print(f"sweep parse error: {e}", file=sys.stderr)
+            return 2
+        print(f"[LAYERED] stack n={len(vs)} layers=({layer_str}) intra_e={intra_e} inter_e={inter_e}")
+        print(f"  sweep={kv['sweep']} ({len(tperps)} steps)")
+        print(f"  {'tperp':>7}  {'lam_max':>9}  {'fiedler':>10}  {'IPR':>8}  {'n·IPR':>7}")
+        rows = []
+        for tperp in tperps:
+            lam_max, fiedler, vec = _weighted_lap_spectrum(intra, inter, tperp, iters, tol)
+            ipr = _ipr(vec)
+            rows.append((tperp, lam_max, fiedler, ipr, vec))
+            print(f"  {tperp:>7.3f}  {lam_max:>9.4f}  {fiedler:>10.6f}  {ipr:>8.4f}  {n * ipr:>7.2f}")
+        peak = max(rows, key=lambda r: r[3])
+        print()
+        print(f"  → peak IPR={peak[3]:.4f} at tperp={peak[0]:.3f} (n·IPR={n * peak[3]:.2f})")
+        print(f"  → fully delocalized would be IPR=1/n={1 / n:.6f}")
+        if inter_e == 0:
+            print(f"  → inter_edges=0: layers are wikilink-disconnected; tperp has no effect on the spectrum")
+        if "verbose" in flags:
+            print(f"\n  --- top-{top} Fiedler-localized notes at peak (tperp={peak[0]:.3f}) ---")
+            vec = peak[4]
+            ranked = sorted(range(n), key=lambda i: -abs(vec[i]))[:top]
+            for i in ranked:
+                vname = vault_of[i].name if vault_of[i] else "?"
+                print(f"  {abs(vec[i]):.4f}  {vname:>14}  {rel(nodes[i], vs)}")
+        return 0
+
+    tperp = float(kv.get("tperp", "1.0"))
+    lam_max, fiedler, vec = _weighted_lap_spectrum(intra, inter, tperp, iters, tol)
+    ipr = _ipr(vec)
+    print(f"[LAYERED] stack n={len(vs)} layers=({layer_str})")
+    print(f"  intra_edges={intra_e}  inter_edges={inter_e}  tperp={tperp}")
+    print(f"  lam_max≈{lam_max:.4f}  fiedler(λ_2)≈{fiedler:.6f}  IPR={ipr:.4f}")
+    loc_factor = ipr * n
+    if loc_factor < 2:
+        verdict = "extended state (delocalized)"
+    elif loc_factor < 10:
+        verdict = "moderate localization"
+    else:
+        verdict = "strongly localized"
+    print(f"  → {verdict} (n·IPR={loc_factor:.2f}; 1·IPR=1 means single-node, n·IPR=1 means uniform)")
+    if inter_e == 0:
+        print(f"  → inter_edges=0: layers are wikilink-disconnected; tperp does not affect the spectrum")
+    ranked = sorted(range(n), key=lambda i: -abs(vec[i]))[:top]
+    print(f"  --- top-{top} Fiedler-localized notes ---")
+    for i in ranked:
+        vname = vault_of[i].name if vault_of[i] else "?"
+        print(f"  {abs(vec[i]):.4f}  {vname:>14}  {rel(nodes[i], vs)}")
+    return 0
+
+
 # ── moire & health ──────────────────────────────────────────────────────────
 
 def cmd_moire(kv, flags):
@@ -1213,12 +1440,13 @@ COMMANDS = {
     "graph:density": cmd_graph_density,
     "graph:dirac": cmd_graph_dirac,
     "graph:spectrum": cmd_graph_spectrum,
+    "graph:layered": cmd_graph_layered,
     "moire": cmd_moire,
     "health": cmd_health,
 }
 
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 
 def main():

@@ -136,19 +136,52 @@ graphene graph components          # connected components
 graphene graph density             # |E| / (|V|·(|V|-1)/2)
 graphene graph dirac [top=N]       # Dirac-point candidates (bridges)
 graphene graph spectrum            # λ_max + Fiedler value (algebraic connectivity)
+graphene graph layered ...         # bilayer Hamiltonian, t⊥-sweep, IPR (multi-vault only)
 ```
 
 ### Multi-source stack
 
 ```bash
-graphene health vault=stack        # fingerprint across leaf vaults
-graphene moire                     # pairwise overlap (shared stems, Jaccard)
-graphene graph dirac vault=stack   # cross-source Dirac points
+graphene health vault=stack                       # fingerprint across leaf vaults
+graphene moire                                    # pairwise overlap (shared stems, Jaccard)
+graphene graph dirac vault=stack                  # cross-source Dirac points
+graphene graph layered vault=stack                # bilayer Hamiltonian, t⊥=1
+graphene graph layered vault=stack sweep=0,2,9    # sweep interlayer coupling
+graphene graph layered vaults=/path/a,/path/b     # without an Obsidian registry
 ```
 
 `vault=stack` is the safe glob-free form of `vault=*`. Selects every leaf vault registered with Obsidian (vaults that don't contain another registered vault). Use `vault=every` to include parent/wrapper vaults too.
 
+`vaults=p1,p2,p3` is the explicit alternative — comma-separated paths, no registry needed. Currently honored by `graph layered`; other multi-vault commands still take `vault=stack`.
+
 If your shell expands `*` (zsh/bash usually do), quote it: `vault='*'`.
+
+#### `graph layered` — bilayer Hamiltonian with explicit interlayer coupling
+
+`graph layered` builds the **layered tight-binding Hamiltonian** explicitly: each vault is a sheet, intra-vault wikilinks are intra-layer hopping with weight 1.0, cross-vault wikilinks are interlayer hopping with weight `t⊥`. Then it computes the weighted Laplacian's spectrum and the **inverse participation ratio (IPR)** of the Fiedler eigenvector.
+
+```bash
+# single coupling
+graphene graph layered vault=stack tperp=1.0 top=10
+
+# sweep the coupling and watch the spectrum move
+graphene graph layered vault=stack sweep=0,2,9
+
+# verbose: also print the localized notes at peak IPR
+graphene graph layered vault=stack sweep=0,2,9 verbose
+```
+
+| Output field | Meaning |
+|---|---|
+| `intra_edges` / `inter_edges` | within-vault vs cross-vault wikilinks |
+| `lam_max` | spectral radius of the weighted Laplacian |
+| `fiedler` | algebraic connectivity (λ₂) — bottleneck = small, well-connected = large |
+| `IPR` | Σ ψᵢ⁴ of the normalized Fiedler eigenvector. `1/n` = fully delocalized; `1` = pinned to one note |
+| `n·IPR` | normalized: `1.0` ≈ uniform, `n` = one node carries everything |
+
+**Reading a sweep.** As `t⊥` rises from 0 (decoupled layers) to ∞ (fused into one graph), the Fiedler eigenvector deforms. Watch for an IPR peak — that's the regime where the algebraic-connectivity mode pinches onto a small set of notes. Those notes (printed with `verbose`) are the **interlayer-coupling-driven bottlenecks** of the stack.
+
+**What this isn't.** This is *not* magic-angle physics. We don't have lattice geometry, so there's no twist angle, no moiré supercell, no Bistritzer–MacDonald flat-band calculation. The operator algebra (`H = (⊕_l H_l) + t⊥ · C`) transfers verbatim from stacked graphene; the geometric structure that makes 1.1° special does not. `graph layered` finds spectral pinch points as a function of explicit interlayer coupling — same algebra, different lattice.
 
 ## Reading the output
 
