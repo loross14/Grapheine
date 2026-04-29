@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-04-28
+
+Chemistry-claims correction. v0.2.0 over-softened in response to F3's
+overclaim flag. Re-checking the math: F3 conflated "Hamiltonian is
+identical" with "spectrum has Dirac cones" — the former is true on any
+bipartite graph (operator form, chiral symmetry, ±E pairs); only the
+latter requires lattice periodicity. v0.2.1 restores the strong claim.
+
+### Changed
+- **Title:** `Dirac's Graphene CLI tool for Knowledge Graphs` → `Dirac's
+  Graphene — a tight-binding CLI for knowledge graphs`. "Tight-binding"
+  is the literal physics term for the Hamiltonian we run on the
+  wikilink graph.
+- **README intuition section:** restored "This isn't metaphor — same
+  Hamiltonian." Asserts that `H = -t Σ (a†b + h.c.)` is identical
+  operator form for graphene and any bipartite tight-binding model.
+  Lattice differs (3-regular periodicity vs arbitrary wikilink graph),
+  so spectrum differs in detail — operator is the operator. Drops the
+  defensive "Same chiral symmetry, not the same lattice" softening.
+- **Stack mode framing:** restored "stacked-bilayer Hamiltonian" as
+  exact (cross-source wikilinks ARE interlayer hopping in the operator
+  form). What was metaphor was specifically the *twisted* qualifier —
+  twist angle, moiré pattern, magic angle, flat bands. v0.2.1 keeps
+  "stacked bilayer" (exact), drops "twisted bilayer with magic-angle
+  physics" (metaphor).
+- `cmd_graph_dirac` and top-level docstring rewritten to mirror the
+  README's restored claim.
+
 ## [0.2.0] — 2026-04-28
 
 Audit-pass response. The project keeps the same surface but lands the

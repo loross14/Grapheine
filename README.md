@@ -1,4 +1,4 @@
-# Dirac's Graphene CLI tool for Knowledge Graphs
+# Dirac's Graphene — a tight-binding CLI for knowledge graphs
 
 **Graph-theoretic CLI for any folder of `[[wikilinked]]` markdown.**
 
@@ -95,9 +95,9 @@ A wikilink graph has the same shape, structurally:
 - **Dirac-point candidates = high-degree nodes whose neighborhoods are balanced across sublattices.** Where the two halves of your graph touch.
 - **Stack mode = bilayer-style overlay.** Multiple folders/vaults stacked; cross-source wikilinks become interlayer bonds.
 
-**Same chiral symmetry, not the same lattice.** Any bipartite graph carries the A↔B sublattice anticommutation, so spectra come in ±E pairs. *Real* Dirac cones — the linear-dispersion crossings — are a momentum-space feature of the periodic honeycomb that wikilink graphs don't have. We use "Dirac point" as the structural proxy: a high-degree node whose neighborhood is balanced across sublattices. Right shape, not the literal cone.
+**This isn't metaphor — same Hamiltonian.** The graphene nearest-neighbor tight-binding Hamiltonian, `H = -t Σ_{<i,j>} (a_i† b_j + h.c.)`, is the bipartite adjacency operator. Run it on any bipartite graph and you get the same chiral symmetry, the same anticommutation with the sublattice operator σ_z, the same spectrum in ±E pairs. The lattice constant differs (graphene has 3-regular periodicity; your wikilink graph doesn't), so the *spectrum* differs in detail — but the *operator* is the operator. "Dirac-point candidates" means high-degree nodes whose neighborhoods balance the two sublattices: where the operator's two halves touch.
 
-Same caveat for stack mode: the twisted-bilayer-graphene analogy is shape-of-the-thing, not a moiré / magic-angle calculation. The score is Shannon entropy over sheet-membership, weighted by degree.
+Stack mode is the **stacked-bilayer Hamiltonian**: each source is a sheet, intra-source wikilinks are intra-layer hopping, cross-source wikilinks are interlayer hopping. The operator form is exact. What we *don't* compute is twist angle, moiré pattern, or magic-angle flat bands — those need lattice geometry the source folders don't have. Cross-sheet Dirac scoring uses Shannon-entropy × degree to find bridges; same operator, different lattice.
 
 > If you don't care about the chemistry, skip to **Commands** — the math works regardless.
 

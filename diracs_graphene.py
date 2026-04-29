@@ -58,11 +58,13 @@ Multi-vault stack:
   health                                  — fingerprint (vault=* aggregates)
   moire [verbose]                         — pairwise vault overlap
 
-Stack mode (vault=stack) treats every source as a sheet of a stacked
-lattice — cross-source wikilinks become interlayer bonds; sheets play
-the role of sublattices; nodes whose neighborhoods are evenly spread
-across sheets score high as bridges (a structural proxy, not a literal
-moiré / magic-angle calculation).
+Stack mode (vault=stack) is the stacked-bilayer Hamiltonian: each
+source is a sheet, intra-source wikilinks are intra-layer hopping,
+cross-source wikilinks are interlayer hopping. The operator form is
+exact. Cross-sheet Dirac scoring (Shannon-entropy × degree over
+sheet-membership) finds nodes that bridge layers. Twist angle, moiré
+pattern, and magic-angle flat bands are not computed — those would
+require lattice geometry the source folders don't have.
 
 License: MIT. © 2026 Logan Ross.
 """
@@ -966,13 +968,13 @@ def cmd_graph_density(kv, flags):
 
 
 def cmd_graph_dirac(kv, flags):
-    """Dirac-point candidates: structural proxy for nodes that bridge two
-    sublattices with high balance. Single-vault uses the bipartite 2-coloring
-    classes (chiral-symmetry sublattices); stack mode uses vault-of-origin
-    as the sheet label (cross-source bridges). Score = balance × degree
-    (single) or Shannon-entropy × degree (stack). Not a momentum-space
-    Dirac cone — wikilink graphs lack lattice periodicity — but the right
-    structural shape: where the two halves of the graph touch."""
+    """Dirac-point candidates: high-degree nodes whose neighborhoods balance
+    the two sublattices of the bipartite tight-binding Hamiltonian. Same
+    chiral-symmetry operator as graphene — different lattice, different
+    spectrum, same algebraic structure. Single-vault uses the bipartite
+    2-coloring as A/B; stack mode uses vault-of-origin as the sheet label.
+    Score = balance × degree (single) or Shannon-entropy × degree (stack).
+    Where the operator's two halves touch."""
     vs = resolve_targets(kv.get("vault"))
     if not vs:
         return 2
@@ -1216,7 +1218,7 @@ COMMANDS = {
 }
 
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 def main():
