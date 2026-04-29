@@ -57,6 +57,8 @@ Graph (math layer):
                                           — bilayer Hamiltonian + IPR localization
   graph dos [tperp=<f>] [moments=<n>] [samples=<r>] [bins=<k>] [peaks=<n>] [verbose]
                                           — density of states via KPM (flat-band detector)
+  graph sublattice [t_aa=<f>] [t_ab=<f>] [t_bb=<f>] [sweep=lo,hi,steps] [top=<n>] [verbose]
+                                          — sublattice-resolved coupling sweep (BM analog)
 
 Multi-vault stack:
   health                                  — fingerprint (vault=* aggregates)
@@ -1354,6 +1356,287 @@ def cmd_graph_layered(kv, flags):
     return 0
 
 
+# ── sublattice-resolved interlayer coupling (BM magic-angle analog) ─────────
+
+def compute_per_vault_coloring(intra, vault_of, vs):
+    """Per-vault BFS 2-coloring on intra-layer adjacency. Returns
+    (color, bipartite_quality):
+      color[i] ∈ {0, 1}             — sublattice label of node i
+      bipartite_quality[v] ∈ [0, 1] — 1 = fully bipartite vault,
+                                      <1 = some intra-vault odd cycles
+
+    Each connected component is seeded with color=0 at its lowest-index
+    node (matches `_bfs_2_color` convention). Multi-component vaults
+    therefore have a per-component A/B convention; cross-vault sublattice
+    classification of edges depends on this seeding."""
+    n = len(intra)
+    color = [None] * n
+    frustration = {v: 0 for v in vs}
+    edges = {v: 0 for v in vs}
+    for i in range(n):
+        v = vault_of[i]
+        if v is None:
+            continue
+        for j in intra[i]:
+            if vault_of[j] == v and j > i:
+                edges[v] += 1
+    for start in range(n):
+        if color[start] is not None:
+            continue
+        v = vault_of[start]
+        if v is None:
+            color[start] = 0
+            continue
+        color[start] = 0
+        q = deque([start])
+        while q:
+            u = q.popleft()
+            for w in intra[u]:
+                if vault_of[w] != v:
+                    continue
+                if color[w] is None:
+                    color[w] = 1 - color[u]
+                    q.append(w)
+                elif color[w] == color[u] and w > u:
+                    frustration[v] += 1
+    quality = {}
+    for v in vs:
+        e = edges.get(v, 0)
+        quality[v] = (1 - frustration[v] / e) if e > 0 else 1.0
+    return color, quality
+
+
+def split_inter_by_sublattice(inter, color):
+    """Classify each cross-vault edge by sublattice pair.
+    Returns (inter_aa, inter_bb, inter_ab) — each a list[set[int]]
+    indexed by node, containing only that-class neighbors.
+
+    aa: both endpoints on sublattice 0
+    bb: both endpoints on sublattice 1
+    ab: opposite sublattices
+
+    (aa and bb are both 'homo-sublattice'; ab is 'hetero-sublattice'.
+    In TBG terms aa+bb = AA-stacking, ab = AB-stacking.)"""
+    n = len(inter)
+    aa = [set() for _ in range(n)]
+    bb = [set() for _ in range(n)]
+    ab = [set() for _ in range(n)]
+    for i in range(n):
+        ci = color[i] if color[i] is not None else 0
+        for j in inter[i]:
+            cj = color[j] if color[j] is not None else 0
+            if ci == 0 and cj == 0:
+                aa[i].add(j)
+            elif ci == 1 and cj == 1:
+                bb[i].add(j)
+            else:
+                ab[i].add(j)
+    return aa, bb, ab
+
+
+def _make_lap_apply_sublattice(intra, inter_aa, inter_bb, inter_ab, t_aa, t_bb, t_ab):
+    """Weighted Laplacian where intra edges have weight 1, and cross-vault
+    edges have weights t_aa / t_bb / t_ab depending on their sublattice
+    pairing. Returns (lap_apply, deg)."""
+    n = len(intra)
+    deg = [
+        len(intra[i])
+        + t_aa * len(inter_aa[i])
+        + t_bb * len(inter_bb[i])
+        + t_ab * len(inter_ab[i])
+        for i in range(n)
+    ]
+
+    def lap_apply(x):
+        out = [deg[i] * x[i] for i in range(n)]
+        for i in range(n):
+            s_i = 0.0
+            for j in intra[i]:
+                s_i += x[j]
+            s_aa = 0.0
+            for j in inter_aa[i]:
+                s_aa += x[j]
+            s_bb = 0.0
+            for j in inter_bb[i]:
+                s_bb += x[j]
+            s_ab = 0.0
+            for j in inter_ab[i]:
+                s_ab += x[j]
+            out[i] -= s_i + t_aa * s_aa + t_bb * s_bb + t_ab * s_ab
+        return out
+
+    return lap_apply, deg
+
+
+def _power_iter_lam_max(lap_apply, n, iters, tol, seed=0xC0FFEE):
+    rng = random.Random(seed)
+
+    def norm(x):
+        return math.sqrt(sum(xi * xi for xi in x))
+
+    def normalize(x):
+        s = norm(x)
+        return [xi / s for xi in x] if s > 0 else x
+
+    x = normalize([rng.random() - 0.5 for _ in range(n)])
+    lam = 0.0
+    for it in range(iters):
+        y = lap_apply(x)
+        new = sum(xi * yi for xi, yi in zip(x, y))
+        if it > 0 and abs(new - lam) < tol * (abs(lam) + 1):
+            lam = new
+            break
+        lam = new
+        x = normalize(y) if norm(y) > 0 else x
+    return lam
+
+
+def _fiedler(lap_apply, lam_max, n, iters, tol, seed=0xBADCAFE):
+    rng = random.Random(seed)
+
+    def norm(x):
+        return math.sqrt(sum(xi * xi for xi in x))
+
+    def normalize(x):
+        s = norm(x)
+        return [xi / s for xi in x] if s > 0 else x
+
+    def subtract_const(x):
+        m = sum(x) / n
+        return [xi - m for xi in x]
+
+    x = normalize(subtract_const([rng.random() - 0.5 for _ in range(n)]))
+    mu = 0.0
+    fvec = x
+    for it in range(iters):
+        Lx = lap_apply(x)
+        y = [lam_max * xi - lxi for xi, lxi in zip(x, Lx)]
+        y = subtract_const(y)
+        new = sum(xi * yi for xi, yi in zip(x, y))
+        if it > 0 and abs(new - mu) < tol * (abs(mu) + 1):
+            mu = new
+            x = normalize(y) if norm(y) > 0 else x
+            fvec = x
+            break
+        mu = new
+        x = normalize(y) if norm(y) > 0 else x
+        fvec = x
+    return lam_max - mu, fvec
+
+
+def cmd_graph_sublattice(kv, flags):
+    """Sublattice-resolved interlayer coupling — graph-theoretic analog of
+    the Bistritzer-MacDonald magic-angle condition.
+
+    Each vault gets a per-vault bipartite 2-coloring (sublattices A and B
+    on intra-layer adjacency). Cross-vault edges are classified by
+    sublattice pair: aa (both on A), bb (both on B), ab (mixed). Three
+    interlayer coupling weights — t_aa, t_bb, t_ab — are then independent
+    knobs.
+
+    The TBG flat-band condition (BM 2011) is roughly w_AA/w_AB ≈ 0.8 in
+    real graphene. We sweep the analog ratio α = t_aa / t_ab on a
+    knowledge-graph stack and report the Fiedler value, IPR of the
+    Fiedler eigenvector, and λ_max as α varies. Peaks in n·IPR at
+    non-trivial α are the operator-level cousin of the BM magic ratio.
+
+    Args:
+      vault=stack | vaults=p1,p2,...
+      t_aa=<f>            homo-sublattice A coupling (default 1.0)
+      t_bb=<f>            homo-sublattice B coupling (default same as t_aa)
+      t_ab=<f>            hetero-sublattice coupling (default 1.0)
+      sweep=lo,hi,steps   sweep α = t_aa / t_ab, fixing t_ab=1, t_bb=t_aa
+      iters=<n>, tol=<f>  power-iteration controls
+      top=<n>             top-N localized notes (verbose)
+
+    Honest non-claim: this is a graph-theoretic analog of BM, not a
+    momentum-space flat-band calculation. We don't have lattice geometry
+    or a Brillouin zone. The α sweep finds spectral pinch points as a
+    function of sublattice-resolved coupling — same algebra as TBG,
+    different lattice."""
+    vs, err = _resolve_multi_vaults(kv)
+    if err:
+        print(f"graph sublattice requires multi-vault stack: {err}", file=sys.stderr)
+        return 2
+    nodes, _, intra, inter, vault_of = build_layered_graph(vs)
+    n = len(nodes)
+    if n < 3:
+        print("(stack too small)")
+        return 0
+    color, quality = compute_per_vault_coloring(intra, vault_of, vs)
+    inter_aa, inter_bb, inter_ab = split_inter_by_sublattice(inter, color)
+
+    intra_e = sum(len(s) for s in intra) // 2
+    e_aa = sum(len(s) for s in inter_aa) // 2
+    e_bb = sum(len(s) for s in inter_bb) // 2
+    e_ab = sum(len(s) for s in inter_ab) // 2
+    iters = int(kv.get("iters", "200"))
+    tol = float(kv.get("tol", "1e-6"))
+    top = int(kv.get("top", "10"))
+
+    layers = {v: sum(1 for vo in vault_of if vo == v) for v in vs}
+    layer_str = ", ".join(f"{v.name}:{layers[v]}" for v in vs)
+    quality_str = " ".join(f"{v.name}:{quality[v]:.2f}" for v in vs)
+
+    print(f"[SUBLATTICE] stack n={len(vs)} layers=({layer_str})")
+    print(f"  intra_e={intra_e}  inter_aa={e_aa}  inter_bb={e_bb}  inter_ab={e_ab}")
+    print(f"  bipartite_quality: {quality_str}  (1.0 = fully bipartite intra-layer)")
+    if e_aa + e_bb + e_ab == 0:
+        print("  → no cross-vault edges; sublattice analysis has no signal")
+        return 0
+
+    if "sweep" in kv:
+        try:
+            alphas = _parse_sweep(kv["sweep"])
+        except ValueError as e:
+            print(f"sweep parse error: {e}", file=sys.stderr)
+            return 2
+        print(f"  sweep α = t_aa/t_ab with t_ab=1, t_bb=t_aa  ({len(alphas)} steps)")
+        print(f"  {'α':>7}  {'lam_max':>9}  {'fiedler':>10}  {'IPR':>8}  {'n·IPR':>7}")
+        rows = []
+        for alpha in alphas:
+            t_aa = alpha
+            t_bb = alpha
+            t_ab = 1.0
+            la, _ = _make_lap_apply_sublattice(intra, inter_aa, inter_bb, inter_ab, t_aa, t_bb, t_ab)
+            lam_max = _power_iter_lam_max(la, n, iters, tol)
+            fiedler, fvec = _fiedler(la, lam_max, n, iters, tol)
+            ipr = _ipr(fvec)
+            rows.append((alpha, lam_max, fiedler, ipr, fvec))
+            print(f"  {alpha:>7.3f}  {lam_max:>9.4f}  {fiedler:>10.6f}  {ipr:>8.4f}  {n * ipr:>7.2f}")
+        peak = max(rows, key=lambda r: r[3])
+        print()
+        print(f"  → peak n·IPR={n * peak[3]:.2f} at α={peak[0]:.3f}")
+        print(f"  → cf. TBG Bistritzer-MacDonald: w_AA/w_AB ≈ 0.8 produces flat bands")
+        print(f"  → analog is structural (operator algebra), not physical (no lattice)")
+        if "verbose" in flags:
+            print(f"\n  --- top-{top} Fiedler-localized notes at peak (α={peak[0]:.3f}) ---")
+            vec = peak[4]
+            ranked = sorted(range(n), key=lambda i: -abs(vec[i]))[:top]
+            for i in ranked:
+                vname = vault_of[i].name if vault_of[i] else "?"
+                sub = "A" if color[i] == 0 else "B"
+                print(f"  {abs(vec[i]):.4f}  {sub}  {vname:>14}  {rel(nodes[i], vs)}")
+        return 0
+
+    t_aa = float(kv.get("t_aa", "1.0"))
+    t_bb = float(kv.get("t_bb", str(t_aa)))
+    t_ab = float(kv.get("t_ab", "1.0"))
+    la, _ = _make_lap_apply_sublattice(intra, inter_aa, inter_bb, inter_ab, t_aa, t_bb, t_ab)
+    lam_max = _power_iter_lam_max(la, n, iters, tol)
+    fiedler, fvec = _fiedler(la, lam_max, n, iters, tol)
+    ipr = _ipr(fvec)
+    print(f"  t_aa={t_aa}  t_bb={t_bb}  t_ab={t_ab}")
+    print(f"  lam_max≈{lam_max:.4f}  fiedler(λ_2)≈{fiedler:.6f}  IPR={ipr:.4f}  n·IPR={n * ipr:.2f}")
+    ranked = sorted(range(n), key=lambda i: -abs(fvec[i]))[:top]
+    print(f"  --- top-{top} Fiedler-localized notes ---")
+    for i in ranked:
+        vname = vault_of[i].name if vault_of[i] else "?"
+        sub = "A" if color[i] == 0 else "B"
+        print(f"  {abs(fvec[i]):.4f}  {sub}  {vname:>14}  {rel(nodes[i], vs)}")
+    return 0
+
+
 # ── DOS via Kernel Polynomial Method (Chebyshev expansion) ──────────────────
 
 def _jackson_kernel(N):
@@ -1629,12 +1912,13 @@ COMMANDS = {
     "graph:spectrum": cmd_graph_spectrum,
     "graph:layered": cmd_graph_layered,
     "graph:dos": cmd_graph_dos,
+    "graph:sublattice": cmd_graph_sublattice,
     "moire": cmd_moire,
     "health": cmd_health,
 }
 
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 
 def main():

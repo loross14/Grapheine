@@ -138,6 +138,7 @@ graphene graph dirac [top=N]       # Dirac-point candidates (bridges)
 graphene graph spectrum            # λ_max + Fiedler value (algebraic connectivity)
 graphene graph layered ...         # bilayer Hamiltonian, t⊥-sweep, IPR (multi-vault only)
 graphene graph dos ...             # density of states via KPM (flat-band detector, multi-vault only)
+graphene graph sublattice ...      # sublattice-resolved coupling sweep (BM analog, multi-vault only)
 ```
 
 ### Multi-source stack
@@ -209,6 +210,28 @@ graphene graph dos vault=stack moments=200 verbose
 | `peak` | local maxima with z-score ≥ 2 — flat-band candidates |
 
 **The honest claim.** KPM is the standard tool for DOS in tight-binding models — used widely in real condensed-matter calculations of disordered graphene, TBG, and beyond. Running it on the layered wikilink Laplacian gives a *real* spectral density, computed from the *real* operator. **What we name 'flat-band candidate' is a DOS peak**: an energy where the eigenvalue distribution piles up. We do *not* claim this corresponds to any specific physical magic-angle phenomenon — that needs lattice geometry. We *do* claim DOS peaks are the operator-level signature you'd look for if you suspected localized modes, and KPM is how condensed-matter physicists actually compute them.
+
+#### `graph sublattice` — sublattice-resolved interlayer coupling (BM analog)
+
+The closest **honest** graph-theoretic cousin of the Bistritzer–MacDonald magic-angle condition. In real twisted bilayer graphene, the BM flat-band ratio is roughly `w_AA / w_AB ≈ 0.8` — homo-sublattice tunneling slightly weaker than hetero-sublattice. We have the same algebraic structure on a layered wikilink Laplacian:
+
+1. Each vault gets a **per-vault bipartite 2-coloring** on its intra-layer adjacency. Sublattice A = colour 0, sublattice B = colour 1. (Reported per-vault as `bipartite_quality ∈ [0, 1]` — `1.0` is fully bipartite; `<1.0` means some intra-vault odd cycles frustrate the coloring.)
+2. Each cross-vault edge is **classified** by sublattice pair: `aa` (both on A), `bb` (both on B), `ab` (mixed).
+3. Three independent coupling weights — `t_aa`, `t_bb`, `t_ab` — replace the single `t⊥` of `graph layered`.
+4. Sweep `α = t_aa / t_ab` (with `t_bb` defaulting to `t_aa` and `t_ab = 1`). Watch `λ_max`, Fiedler `λ_2`, and `n·IPR` move.
+
+```bash
+# fixed sublattice weights
+graphene graph sublattice vault=stack t_aa=0.8 t_ab=1.0
+
+# BM-style ratio sweep — find spectral pinch points in α
+graphene graph sublattice vault=stack sweep=0,2,9
+
+# verbose: print top-N localized notes (with their sublattice label) at peak α
+graphene graph sublattice vault=stack sweep=0,2,9 verbose top=10
+```
+
+**The honest non-claim.** This is not a Bistritzer–MacDonald calculation. We don't have lattice geometry; there's no Brillouin zone, no twist angle, no moiré supercell. What transfers is the **operator algebra**: same Hamiltonian decomposition, same sublattice-resolved coupling matrix, same Fiedler/IPR diagnostics. `graph sublattice` reports peaks in `n·IPR` as α varies — those are the operator-level cousins of the BM magic ratio. If you find a non-trivial α\* that pinches the algebraic-connectivity mode onto a small, sublattice-coherent set of notes, you've found the **operator's structural analog** of magic-angle behaviour. Whether anything physical or epistemic happens at that α\* on your graph is an empirical question the tool can't answer for you.
 
 ## Reading the output
 

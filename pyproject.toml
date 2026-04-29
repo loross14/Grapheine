@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diracs-graphene"
-version = "0.3.1"
+version = "0.4.0"
 description = "Graph-theoretic CLI for any folder of [[wikilinked]] markdown — sublattices, Dirac points, Fiedler value, multi-source stack analysis. Works on Obsidian, Logseq, Roam, Foam, Dendron, Quartz, plain Zettelkasten."
 readme = "README.md"
 license = { file = "LICENSE" }

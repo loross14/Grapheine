@@ -407,3 +407,85 @@ def test_kpm_reconstruct_returns_sorted_energies():
     # Energies span [0, ~10]
     assert energies[0] >= 0
     assert energies[-1] <= 10.5
+
+
+# ── v0.4 sublattice (BM magic-angle analog) ─────────────────────────────────
+
+
+def test_sublattice_requires_multi_vault(tmp_path):
+    reset_caches()
+    vault = make_vault(tmp_path / "vault")
+    import sys, io
+    saved = sys.argv[:]
+    sys.argv = ["graphene", "graph", "sublattice", f"vault={vault}"]
+    err = io.StringIO()
+    from contextlib import redirect_stderr
+    try:
+        with redirect_stderr(err):
+            rc = dg.main()
+    finally:
+        sys.argv = saved
+    assert rc == 2
+    assert "multi-vault" in err.getvalue()
+
+
+def test_sublattice_runs_on_two_vault_stack(tmp_path):
+    reset_caches()
+    a, b = make_two_vaults(tmp_path)
+    out = run([
+        "graph", "sublattice", f"vaults={a},{b}",
+        "t_aa=1.0", "t_ab=1.0", "top=3",
+    ])
+    assert "[SUBLATTICE]" in out
+    assert "inter_aa=" in out
+    assert "inter_bb=" in out
+    assert "inter_ab=" in out
+    assert "bipartite_quality" in out
+    assert "lam_max" in out
+
+
+def test_sublattice_sweep_emits_alpha_curve(tmp_path):
+    reset_caches()
+    a, b = make_two_vaults(tmp_path)
+    out = run(["graph", "sublattice", f"vaults={a},{b}", "sweep=0,1,3"])
+    assert "α = t_aa/t_ab" in out
+    assert "0.000" in out
+    assert "0.500" in out
+    assert "1.000" in out
+    assert "Bistritzer-MacDonald" in out
+
+
+def test_per_vault_coloring_on_bipartite_pair(tmp_path):
+    reset_caches()
+    a, b = make_two_vaults(tmp_path)
+    nodes, _, intra, inter, vault_of = dg.build_layered_graph([a, b])
+    color, quality = dg.compute_per_vault_coloring(intra, vault_of, [a, b])
+    # Both vaults are bipartite
+    assert quality[a] == 1.0
+    assert quality[b] == 1.0
+    # Coloring is a valid 0/1 assignment
+    assert all(c in (0, 1) for c in color)
+    # Adjacent intra-vault nodes have opposite colors (since bipartite)
+    for i in range(len(nodes)):
+        for j in intra[i]:
+            if vault_of[i] == vault_of[j]:
+                assert color[i] != color[j], f"intra edge {i}-{j} has same color in bipartite vault"
+
+
+def test_split_inter_by_sublattice_classifies_three_buckets():
+    # 4 nodes, all in inter (cross-vault):
+    #   0-1: A-A  (aa)
+    #   2-3: B-B  (bb)
+    #   0-2: A-B  (ab)
+    inter = [{1, 2}, {0}, {0, 3}, {2}]
+    color = [0, 0, 1, 1]
+    aa, bb, ab = dg.split_inter_by_sublattice(inter, color)
+    # 0-1 in aa
+    assert 1 in aa[0] and 0 in aa[1]
+    # 2-3 in bb
+    assert 3 in bb[2] and 2 in bb[3]
+    # 0-2 in ab (both directions)
+    assert 2 in ab[0] and 0 in ab[2]
+    # bb[0] and aa[2] should be empty
+    assert len(bb[0]) == 0
+    assert len(aa[2]) == 0

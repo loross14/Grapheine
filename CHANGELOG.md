@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-04-28
+
+The Bistritzer–MacDonald analog. v0.3.x made `t⊥` sweepable and added
+KPM density-of-states. v0.4 makes the **sublattice-resolved interlayer
+coupling** explicit — `t_aa`, `t_bb`, `t_ab` as three independent knobs
+on cross-vault edges classified by per-vault bipartite 2-coloring.
+Sweeping `α = t_aa / t_ab` is the closest honest graph-theoretic cousin
+of TBG's magic-angle condition `w_AA / w_AB ≈ 0.8`.
+
+What transfers from TBG: the operator algebra (sublattice-resolved
+coupling matrix, Fiedler/IPR diagnostics). What does NOT transfer:
+lattice geometry, twist angle, moiré supercell, Brillouin zone,
+Bistritzer–MacDonald continuum model. `graph sublattice` finds spectral
+pinch points as a function of sublattice-resolved coupling — same
+algebra as TBG, different lattice. The README's non-claim is preserved.
+
+### Added
+
+- **`graph sublattice`** command. Multi-vault only.
+  - `t_aa=<f>`, `t_bb=<f>`, `t_ab=<f>` — three independent coupling
+    weights. `t_bb` defaults to `t_aa` (homo-sublattice symmetry).
+  - `sweep=lo,hi,steps` — sweeps `α = t_aa / t_ab` with `t_ab = 1` and
+    `t_bb = t_aa`.
+  - `top=<n>` — top-N Fiedler-localized notes printed under `verbose`,
+    with sublattice label.
+  - Reports per-vault `bipartite_quality` so users can tell whether the
+    A/B classification of a given vault is trustworthy or confounded by
+    intra-vault odd cycles.
+- **`compute_per_vault_coloring(intra, vault_of, vs)` helper.** BFS
+  2-colouring on intra-layer adjacency, per vault, with frustration
+  counting. Multi-component vaults are seeded from the lowest-index
+  node of each component (matches `_bfs_2_color`).
+- **`split_inter_by_sublattice(inter, color)` helper.** Classifies each
+  cross-vault edge into `inter_aa` / `inter_bb` / `inter_ab` adjacency
+  lists.
+- **`_make_lap_apply_sublattice(...)` factory.** Weighted Laplacian
+  closure with three sublattice-resolved interlayer weights.
+- **`_power_iter_lam_max` and `_fiedler` helpers.** Extracted from
+  `_weighted_lap_spectrum` so the sublattice command can call them
+  independently per α step. No behaviour change to the original.
+- **5 new tests**: multi-vault required, runs on a 2-vault fixture,
+  sweep emits the α curve and the BM citation, per-vault coloring
+  validity on a bipartite pair, `split_inter_by_sublattice` puts edges
+  in the right buckets.
+
+### Changed
+
+- Top-level docstring lists `graph sublattice`.
+- README "Multi-source stack" section grew a `graph sublattice`
+  subsection with the BM analogy and the explicit non-claim.
+
 ## [0.3.1] — 2026-04-28
 
 The flat-band detector. v0.3.0 made interlayer coupling sweepable and
