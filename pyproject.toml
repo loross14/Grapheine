@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diracs-graphene"
+version = "0.1.0"
+description = "Graph-theoretic CLI for Obsidian vaults — sublattices, Dirac points, Fiedler value, multi-vault stack analysis"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Logan Ross" }]
+keywords = ["obsidian", "graph", "knowledge-graph", "wikilinks", "cli", "pkm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/loganross/diracs-graphene"
+
+[project.scripts]
+dirac = "diracs_graphene:main"
+
+[tool.setuptools]
+py-modules = ["diracs_graphene"]
