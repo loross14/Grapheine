@@ -1,4 +1,4 @@
-# Dirac's Graphene
+# Dirac's Graphene CLI tool for Knowledge Graphs
 
 Graph-theoretic CLI for Obsidian vaults. Pure stdlib Python. No Obsidian app required.
 
