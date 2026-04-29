@@ -32,5 +32,5 @@ jobs:
       - name: Run pytest
         run: pytest -q
 
-      - name: Smoke-test the graphene CLI entry point
-        run: graphene --version
+      - name: Smoke-test the grapheine CLI entry point
+        run: grapheine --version
