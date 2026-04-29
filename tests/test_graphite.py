@@ -101,7 +101,9 @@ def test_stub_path_for_subdir_target(tmp_path):
     out, _, rc = run(["stub", f"vault={vault}", "json"])
     assert rc == 0
     proposals = json.loads(out)
-    paths = [p["path"] for p in proposals]
+    # Normalize to POSIX form so the assertion holds on Windows (which emits
+    # backslashes in path strings).
+    paths = [Path(p["path"]).as_posix() for p in proposals]
     assert any(p.endswith("daily/2026-04-28.md") for p in paths)
 
 
