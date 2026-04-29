@@ -4,30 +4,75 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diracs-graphene"
-version = "0.1.0"
-description = "Graph-theoretic CLI for Obsidian vaults — sublattices, Dirac points, Fiedler value, multi-vault stack analysis"
+version = "0.2.0"
+description = "Graph-theoretic CLI for any folder of [[wikilinked]] markdown — sublattices, Dirac points, Fiedler value, multi-source stack analysis. Works on Obsidian, Logseq, Roam, Foam, Dendron, Quartz, plain Zettelkasten."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
 authors = [{ name = "Logan Ross" }]
-keywords = ["obsidian", "graph", "knowledge-graph", "wikilinks", "cli", "pkm"]
+keywords = [
+    "obsidian",
+    "logseq",
+    "roam",
+    "foam",
+    "dendron",
+    "quartz",
+    "zettelkasten",
+    "knowledge-graph",
+    "wikilinks",
+    "graph-theory",
+    "spectral-graph",
+    "dirac",
+    "bipartite",
+    "honeycomb",
+    "fiedler",
+    "cli",
+    "pkm",
+    "markdown",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Text Processing :: Markup :: Markdown",
     "Topic :: Utilities",
 ]
 
 [project.urls]
-Homepage = "https://github.com/loganross/diracs-graphene"
+Homepage = "https://github.com/loross14/diracs-graphene"
+Repository = "https://github.com/loross14/diracs-graphene"
+Issues = "https://github.com/loross14/diracs-graphene/issues"
+Changelog = "https://github.com/loross14/diracs-graphene/blob/main/CHANGELOG.md"
 
 [project.scripts]
-dirac = "diracs_graphene:main"
+graphene = "diracs_graphene:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "ruff>=0.5",
+    "build>=1.0",
+    "twine>=5.0",
+]
 
 [tool.setuptools]
 py-modules = ["diracs_graphene"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

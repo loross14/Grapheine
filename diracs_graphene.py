@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
-"""dirac — graph-theoretic CLI for Obsidian vaults.
+"""graphene — graph-theoretic CLI for any folder of [[wikilinked]] markdown.
 
-Your wikilink graph is a 2D lattice: notes as atoms, [[links]] as bonds.
+Your knowledge graph is a 2D lattice: notes as atoms, [[links]] as bonds.
 This tool exposes the lattice — degree distribution, sublattices, cycles,
 Dirac-point candidates (high-balance bridges), Fiedler value (algebraic
-connectivity), and cross-vault stack analysis.
+connectivity), and multi-source stack analysis.
 
-Read-side only. Pure stdlib. No Obsidian app required.
+Works on Obsidian, Logseq, Roam, Foam, Dendron, Quartz, Hugo content
+trees, Notion exports, plain Zettelkasten, or any directory of `.md`
+files using `[[wikilinks]]` and/or `[text](file.md)` references.
+
+Read-side only. Pure stdlib. No app required.
 
 Resolution:
-  - Vault registry auto-detected from the Obsidian config file
-    (macOS: ~/Library/Application Support/obsidian/obsidian.json;
-     Linux: ~/.config/obsidian/obsidian.json;
-     Windows: %APPDATA%/obsidian/obsidian.json).
-  - vault=<name> resolves a registered vault by directory basename.
-  - vault=*|stack|all selects every leaf vault (vaults that don't contain
-    another registered vault).
-  - vault=every selects every registered vault including parents.
-  - Set OBSIDIAN_VAULT in the environment to change the default.
+  - Direct path: vault=/path/to/your/folder works for ANY directory of
+    markdown files. This is the primary entry point.
+  - Obsidian shortcut: registered vaults auto-detected from Obsidian's
+    config (macOS: ~/Library/Application Support/obsidian/obsidian.json;
+    Linux: ~/.config/obsidian/obsidian.json; Windows:
+    %APPDATA%/obsidian/obsidian.json). Convenience for Obsidian users —
+    pass vault=<basename> to select a registered vault by name.
+  - Stack mode: vault=stack (or `*` if quoted) selects every leaf
+    Obsidian vault for cross-source analysis.
+  - vault=every includes parent/wrapper vaults too.
+  - Set GRAPHENE_VAULT or OBSIDIAN_VAULT to change the default.
 
 Commands:
   vaults [verbose]
@@ -40,7 +46,7 @@ Graph (math layer):
   graph degree [top=<n>]                  — degree distribution + top-N hubs
   graph hubs [top=<n>]                    — top-N nodes by degree
   graph triangles [total]                 — count 3-cycles (honeycomb=0)
-  graph clustering                        — global clustering coefficient
+  graph clustering                        — average local clustering coefficient
   graph girth                             — shortest cycle length
   graph bipartite                         — 2-color test; sublattice sizes
   graph components [verbose]              — connected components
@@ -52,9 +58,11 @@ Multi-vault stack:
   health                                  — fingerprint (vault=* aggregates)
   moire [verbose]                         — pairwise vault overlap
 
-Stack mode (vault=*) treats every leaf vault as a sheet of a stacked
-lattice — cross-vault wikilinks become interaction terms; sublattices
-become sheets; high-entropy bridges become twisted-bilayer Dirac points.
+Stack mode (vault=stack) treats every source as a sheet of a stacked
+lattice — cross-source wikilinks become interlayer bonds; sheets play
+the role of sublattices; nodes whose neighborhoods are evenly spread
+across sheets score high as bridges (a structural proxy, not a literal
+moiré / magic-angle calculation).
 
 License: MIT. © 2026 Logan Ross.
 """
@@ -127,7 +135,7 @@ def load_registry():
 
 
 def _default_vault_name():
-    return os.environ.get("OBSIDIAN_VAULT")
+    return os.environ.get("GRAPHENE_VAULT") or os.environ.get("OBSIDIAN_VAULT")
 
 
 def resolve_vault(name):
@@ -226,13 +234,12 @@ def resolve_file(vaults, file_arg, path_arg):
                 return p
         return None
     if file_arg:
-        target = file_arg.lower().rstrip(".md").rstrip("/")
+        target = file_arg.lower().rstrip("/")
+        if target.endswith(".md"):
+            target = target[:-3]
         idx = vault_index(vs)
         if target in idx:
             return idx[target][0]
-        for p in walk_md(vs):
-            if p.stem.lower() == target:
-                return p
     return None
 
 
@@ -280,6 +287,8 @@ def read_note(p):
         text = p.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return "", {}
+    if "\r\n" in text:
+        text = text.replace("\r\n", "\n")
     m = FM_RE.match(text)
     if m:
         return text[m.end():], parse_frontmatter(m.group(1))
@@ -858,7 +867,7 @@ def cmd_graph_clustering(kv, flags):
         print("clustering=0.0")
         return 0
     avg = sum(coeffs) / len(coeffs)
-    print(f"clustering={avg:.4f}  n_evaluated={len(coeffs)}  (honeycomb expected: 0.0)")
+    print(f"avg_local_clustering={avg:.4f}  n_evaluated={len(coeffs)}  (honeycomb expected: 0.0)")
     return 0
 
 
@@ -957,9 +966,13 @@ def cmd_graph_density(kv, flags):
 
 
 def cmd_graph_dirac(kv, flags):
-    """Dirac points = nodes whose neighborhood spans sublattices with high
-    balance. Single-vault: sublattice = bipartite 2-coloring class.
-    Stack mode: sublattice = vault-of-origin (cross-sheet bridges)."""
+    """Dirac-point candidates: structural proxy for nodes that bridge two
+    sublattices with high balance. Single-vault uses the bipartite 2-coloring
+    classes (chiral-symmetry sublattices); stack mode uses vault-of-origin
+    as the sheet label (cross-source bridges). Score = balance × degree
+    (single) or Shannon-entropy × degree (stack). Not a momentum-space
+    Dirac cone — wikilink graphs lack lattice periodicity — but the right
+    structural shape: where the two halves of the graph touch."""
     vs = resolve_targets(kv.get("vault"))
     if not vs:
         return 2
@@ -1047,11 +1060,14 @@ def cmd_graph_spectrum(kv, flags):
     rng = random.Random(0xC0FFEE)
     x = [rng.random() - 0.5 for _ in range(n)]
     x = normalize(x)
+    # Phase 1: λ_max via power iteration on L. Skip convergence test on iter 0
+    # to avoid a spurious match against the lam_max=0 sentinel when the random
+    # init's first Rayleigh quotient happens to be near zero.
     lam_max = 0.0
-    for _ in range(iters):
+    for it in range(iters):
         y = lap_apply(x)
         new = sum(xi * yi for xi, yi in zip(x, y))
-        if abs(new - lam_max) < tol * (abs(lam_max) + 1):
+        if it > 0 and abs(new - lam_max) < tol * (abs(lam_max) + 1):
             lam_max = new
             break
         lam_max = new
@@ -1060,13 +1076,15 @@ def cmd_graph_spectrum(kv, flags):
     x = [rng.random() - 0.5 for _ in range(n)]
     x = subtract_const(x)
     x = normalize(x)
+    # Phase 2: λ_2 via shifted-deflated power iteration on M = lam_max·I − L,
+    # restricted to the subspace orthogonal to the all-ones vector.
     mu = 0.0
-    for _ in range(iters):
+    for it in range(iters):
         Lx = lap_apply(x)
         y = [lam_max * xi - lxi for xi, lxi in zip(x, Lx)]
         y = subtract_const(y)
         new = sum(xi * yi for xi, yi in zip(x, y))
-        if abs(new - mu) < tol * (abs(mu) + 1):
+        if it > 0 and abs(new - mu) < tol * (abs(mu) + 1):
             mu = new
             break
         mu = new
@@ -1074,7 +1092,10 @@ def cmd_graph_spectrum(kv, flags):
 
     fiedler = lam_max - mu
     print(f"lam_max≈{lam_max:.4f}   fiedler(λ_2)≈{fiedler:.6f}   nodes={n}")
-    if fiedler < 1e-4:
+    if fiedler < -tol:
+        print(f"→ negative Fiedler ({fiedler:.6f}): Phase-1 likely undershot λ_max; "
+              f"increase iters= or run on a smaller subgraph")
+    elif fiedler < 1e-4:
         print("→ near-zero Fiedler: graph is effectively disconnected")
     elif fiedler < 0.05:
         print("→ small Fiedler: a narrow bottleneck exists between two regions")
@@ -1123,7 +1144,7 @@ def cmd_health(kv, flags):
         return 2
     multi = len(vs) > 1
     if multi:
-        print(f"[DIRAC] stack n={len(vs)}")
+        print(f"[GRAPHENE] stack n={len(vs)}")
         agg_e = 0
         for v in vs:
             adj = build_undirected_graph(v)
@@ -1156,7 +1177,7 @@ def cmd_health(kv, flags):
     b = sum(1 for c in color.values() if c == 1)
     bip = "true" if odd is None else "false"
     mean_deg = (2 * e / n) if n else 0
-    print(f"[DIRAC] {vault.name}: nodes={n} edges={e} ⟨k⟩={mean_deg:.2f} "
+    print(f"[GRAPHENE] {vault.name}: nodes={n} edges={e} ⟨k⟩={mean_deg:.2f} "
           f"orphans={orphans_n} isolates={isolates} unresolved={len(unresolved)} "
           f"tags={len(counter)} bipartite={bip} A/B={a}/{b}")
     return 0
@@ -1195,13 +1216,22 @@ COMMANDS = {
 }
 
 
+__version__ = "0.2.0"
+
+
 def main():
+    # Restore default SIGPIPE behavior on POSIX so `dirac ... | head` exits clean.
+    try:
+        import signal
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    except (ImportError, AttributeError, ValueError):
+        pass
     cmd, kv, flags = parse_args(sys.argv[1:])
     if cmd is None or cmd in ("-h", "--help", "help"):
         print(__doc__)
         return 0
     if cmd == "--version":
-        print("dirac 0.1.0")
+        print(f"graphene {__version__}")
         return 0
     if cmd not in COMMANDS:
         print(f"unknown command: {cmd}", file=sys.stderr)
@@ -1211,6 +1241,12 @@ def main():
         return COMMANDS[cmd](kv, flags) or 0
     except KeyboardInterrupt:
         return 130
+    except BrokenPipeError:
+        try:
+            sys.stdout.close()
+        except Exception:
+            pass
+        return 0
 
 
 if __name__ == "__main__":
