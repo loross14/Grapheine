@@ -296,9 +296,32 @@ Both `tags`/`tag` and `aliases`/`alias` keys are recognized. CRLF line endings (
 
 The trailing *-eine* (γράφειν) is the disambiguating suffix. It's both a Greek root that ties to writing and a clean namespace island in the PyPI / Obsidian / GitHub neighborhood.
 
-## Roadmap
+## Graphite — write-side companion
 
-`grapheine` is the **read-side** tool — it observes the lattice. A planned companion `graphite` will be the **write-side**: stub unresolved wikilinks, suggest cross-sheet bonds, propagate frontmatter conventions. Pencil on paper, mineral on lattice. Same chemistry, opposite gradient.
+`grapheine` reads the lattice. `graphite.py` (sibling module) writes it. The relationship is Legendre: `grapheine` exposes `L(q, q̇)` — state and the rate at which it's measured — while `graphite` exposes `H(q, p)` — state and the obligations the measurements imply. Same `q`, conjugate momentum.
+
+Three commands, each the dual of a grapheine read:
+
+| read (grapheine) | dual write (graphite) |
+|---|---|
+| `unresolved` | `stub`       — create stub files for broken wikilinks |
+| `orphans`    | `bond`       — suggest cross-links from tag-overlap |
+| `properties` | `propagate`  — fill frontmatter keys that ≥N% of files share |
+
+```bash
+# dry-run by default — prints proposals, writes nothing
+python3 graphite.py stub vault=my-vault limit=20
+python3 graphite.py bond vault=my-vault k=2
+python3 graphite.py propagate vault=my-vault min_share=0.5
+
+# inspect the duality table
+python3 graphite.py legendre
+
+# --apply writes the proposals — gated to vaults under ~/Desktop/forge/ or ~/.claude/
+python3 graphite.py stub vault=my-forge-vault --apply
+```
+
+Pencil on paper, mineral on lattice. Same chemistry, opposite gradient.
 
 ## License
 
