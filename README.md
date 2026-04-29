@@ -137,6 +137,7 @@ graphene graph density             # |E| / (|V|·(|V|-1)/2)
 graphene graph dirac [top=N]       # Dirac-point candidates (bridges)
 graphene graph spectrum            # λ_max + Fiedler value (algebraic connectivity)
 graphene graph layered ...         # bilayer Hamiltonian, t⊥-sweep, IPR (multi-vault only)
+graphene graph dos ...             # density of states via KPM (flat-band detector, multi-vault only)
 ```
 
 ### Multi-source stack
@@ -182,6 +183,32 @@ graphene graph layered vault=stack sweep=0,2,9 verbose
 **Reading a sweep.** As `t⊥` rises from 0 (decoupled layers) to ∞ (fused into one graph), the Fiedler eigenvector deforms. Watch for an IPR peak — that's the regime where the algebraic-connectivity mode pinches onto a small set of notes. Those notes (printed with `verbose`) are the **interlayer-coupling-driven bottlenecks** of the stack.
 
 **What this isn't.** This is *not* magic-angle physics. We don't have lattice geometry, so there's no twist angle, no moiré supercell, no Bistritzer–MacDonald flat-band calculation. The operator algebra (`H = (⊕_l H_l) + t⊥ · C`) transfers verbatim from stacked graphene; the geometric structure that makes 1.1° special does not. `graph layered` finds spectral pinch points as a function of explicit interlayer coupling — same algebra, different lattice.
+
+#### `graph dos` — density of states via Kernel Polynomial Method
+
+`graph dos` computes the **spectral density ρ(E) of the layered Laplacian** without diagonalizing it, using the standard condensed-matter Kernel Polynomial Method (Chebyshev expansion + Jackson kernel + stochastic trace estimation). DOS peaks are the measurable signature of flat bands — energies where many eigenvectors cluster — without invoking magic-angle geometry.
+
+```bash
+# default: 200 moments, 8 random probe vectors, 100 output bins
+graphene graph dos vault=stack tperp=1.0
+
+# faster preview
+graphene graph dos vault=stack moments=120 samples=4 bins=80
+
+# print every bin instead of every Nth + peaks
+graphene graph dos vault=stack moments=200 verbose
+```
+
+| Output field | Meaning |
+|---|---|
+| `λ_max` | spectral radius (sets the rescaling so spectrum lies in [−1, 1]) |
+| `moments` | Chebyshev expansion order (resolution ≈ λ_max / N) |
+| `samples` | random probe vectors averaged for the trace estimator |
+| `bins` | output histogram resolution |
+| `ρ(E)` | density of states at energy E (probability density over rescaled spectrum) |
+| `peak` | local maxima with z-score ≥ 2 — flat-band candidates |
+
+**The honest claim.** KPM is the standard tool for DOS in tight-binding models — used widely in real condensed-matter calculations of disordered graphene, TBG, and beyond. Running it on the layered wikilink Laplacian gives a *real* spectral density, computed from the *real* operator. **What we name 'flat-band candidate' is a DOS peak**: an energy where the eigenvalue distribution piles up. We do *not* claim this corresponds to any specific physical magic-angle phenomenon — that needs lattice geometry. We *do* claim DOS peaks are the operator-level signature you'd look for if you suspected localized modes, and KPM is how condensed-matter physicists actually compute them.
 
 ## Reading the output
 

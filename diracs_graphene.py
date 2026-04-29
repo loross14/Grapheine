@@ -55,6 +55,8 @@ Graph (math layer):
   graph spectrum [iters=<n>] [tol=<eps>]  — λ_max + Fiedler value
   graph layered [tperp=<f>|sweep=lo,hi,steps] [top=<n>] [verbose]
                                           — bilayer Hamiltonian + IPR localization
+  graph dos [tperp=<f>] [moments=<n>] [samples=<r>] [bins=<k>] [peaks=<n>] [verbose]
+                                          — density of states via KPM (flat-band detector)
 
 Multi-vault stack:
   health                                  — fingerprint (vault=* aggregates)
@@ -1155,9 +1157,10 @@ def build_layered_graph(vaults):
     return nodes, idx, intra, inter, vault_of
 
 
-def _weighted_lap_spectrum(intra, inter, tperp, iters, tol):
-    """Weighted Laplacian L = D − W. Intra weight=1, inter weight=tperp.
-    Returns (lam_max, fiedler_lambda, fiedler_vec)."""
+def _make_lap_apply(intra, inter, tperp):
+    """Build a closure that applies the weighted Laplacian L = D − W.
+    Intra-layer edge weight = 1, inter-layer edge weight = tperp.
+    Returns (lap_apply, deg) where deg is the diagonal of D."""
     n = len(intra)
     deg = [len(intra[i]) + tperp * len(inter[i]) for i in range(n)]
 
@@ -1172,6 +1175,15 @@ def _weighted_lap_spectrum(intra, inter, tperp, iters, tol):
                 s_inter += x[j]
             out[i] -= s_intra + tperp * s_inter
         return out
+
+    return lap_apply, deg
+
+
+def _weighted_lap_spectrum(intra, inter, tperp, iters, tol):
+    """Weighted Laplacian L = D − W. Intra weight=1, inter weight=tperp.
+    Returns (lam_max, fiedler_lambda, fiedler_vec)."""
+    n = len(intra)
+    lap_apply, _ = _make_lap_apply(intra, inter, tperp)
 
     def norm(x):
         return math.sqrt(sum(xi * xi for xi in x))
@@ -1238,6 +1250,24 @@ def _parse_sweep(s):
     return [lo + (hi - lo) * i / (steps - 1) for i in range(steps)]
 
 
+def _resolve_multi_vaults(kv):
+    """Resolve multi-vault input. Honors `vaults=p1,p2,...` (comma-separated
+    explicit paths) or `vault=stack` / `vault=*` (Obsidian registry).
+    Returns (vaults, error_message). On success error_message is empty."""
+    if "vaults" in kv:
+        paths = [Path(s).expanduser() for s in kv["vaults"].split(",") if s.strip()]
+        missing = [str(p) for p in paths if not p.is_dir()]
+        if missing:
+            return [], f"vaults= contained non-directories: {missing}"
+        if len(paths) < 2:
+            return [], "need ≥2 paths in vaults="
+        return paths, ""
+    vs = resolve_targets(kv.get("vault") or "*")
+    if len(vs) < 2:
+        return [], "use vault=stack, vault=*, or vaults=p1,p2,..."
+    return vs, ""
+
+
 def cmd_graph_layered(kv, flags):
     """Layered tight-binding spectrum: bilayer/multilayer Hamiltonian with
     explicit interlayer coupling t⊥ on cross-vault wikilinks.
@@ -1252,18 +1282,9 @@ def cmd_graph_layered(kv, flags):
     is identified by IPR of the algebraic-connectivity eigenvector, not
     by a Bistritzer-MacDonald calculation. Operator algebra transfers;
     geometric details don't."""
-    if "vaults" in kv:
-        # Comma-separated explicit list — works without an Obsidian registry.
-        paths = [Path(s).expanduser() for s in kv["vaults"].split(",") if s.strip()]
-        vs = [p for p in paths if p.is_dir()]
-        if len(vs) != len(paths):
-            missing = [str(p) for p in paths if not p.is_dir()]
-            print(f"vaults= contained non-directories: {missing}", file=sys.stderr)
-            return 2
-    else:
-        vs = resolve_targets(kv.get("vault") or "*")
-    if len(vs) < 2:
-        print("graph layered requires multi-vault stack (vault=stack, vault=*, or vaults=p1,p2,...)", file=sys.stderr)
+    vs, err = _resolve_multi_vaults(kv)
+    if err:
+        print(f"graph layered requires multi-vault stack: {err}", file=sys.stderr)
         return 2
     nodes, idx_map, intra, inter, vault_of = build_layered_graph(vs)
     n = len(nodes)
@@ -1330,6 +1351,172 @@ def cmd_graph_layered(kv, flags):
     for i in ranked:
         vname = vault_of[i].name if vault_of[i] else "?"
         print(f"  {abs(vec[i]):.4f}  {vname:>14}  {rel(nodes[i], vs)}")
+    return 0
+
+
+# ── DOS via Kernel Polynomial Method (Chebyshev expansion) ──────────────────
+
+def _jackson_kernel(N):
+    """Jackson kernel coefficients for an N-moment Chebyshev expansion.
+    Suppresses Gibbs oscillations in the reconstructed density.
+    Standard form: g_n = ((N-n+1) cos(πn/(N+1)) + sin(πn/(N+1)) cot(π/(N+1))) / (N+1)."""
+    g = [0.0] * N
+    a = math.pi / (N + 1)
+    cot_a = math.cos(a) / math.sin(a)
+    for n in range(N):
+        g[n] = ((N - n + 1) * math.cos(a * n) + math.sin(a * n) * cot_a) / (N + 1)
+    return g
+
+
+def _kpm_moments(lap_apply, n_nodes, lam_max, moments, samples, seed=0xC0FFEE):
+    """Stochastic Chebyshev moments of the rescaled Laplacian.
+
+    Rescale L → L̃ = (2/λ_max)·L − I so spectrum lies in [−1, 1].
+    Returns μ ∈ R^moments where μ_k = (1/n) tr(T_k(L̃)), estimated via
+    R Rademacher random vectors.
+    """
+    rng = random.Random(seed)
+    a = lam_max / 2.0
+    scale = 1.0 / a  # apply L̃ x = (1/a) L x − x = (2/λ_max) L x − x
+    mu = [0.0] * moments
+
+    def apply_Ltilde(x):
+        Lx = lap_apply(x)
+        return [scale * lxi - xi for xi, lxi in zip(x, Lx)]
+
+    for r in range(samples):
+        # Rademacher probe vector: ±1 entries, normalized so ⟨v|v⟩ = 1 in expectation
+        v = [(1.0 if rng.random() < 0.5 else -1.0) / math.sqrt(n_nodes) for _ in range(n_nodes)]
+        # T_0 |v⟩ = |v⟩, T_1 |v⟩ = L̃ |v⟩
+        alpha = v[:]                                  # T_n |v⟩, start n=0
+        beta = apply_Ltilde(v)                        # T_n+1 |v⟩, start n=1
+        mu[0] += sum(vi * ai for vi, ai in zip(v, alpha))
+        if moments > 1:
+            mu[1] += sum(vi * bi for vi, bi in zip(v, beta))
+        for n in range(2, moments):
+            # T_{n+1} = 2 L̃ T_n − T_{n-1}
+            Lb = apply_Ltilde(beta)
+            gamma = [2 * lbi - ai for lbi, ai in zip(Lb, alpha)]
+            mu[n] += sum(vi * gi for vi, gi in zip(v, gamma))
+            alpha, beta = beta, gamma
+    for k in range(moments):
+        mu[k] /= samples
+    return mu
+
+
+def _kpm_reconstruct(mu, lam_max, bins, kernel="jackson"):
+    """Reconstruct density of states from Chebyshev moments at `bins` points.
+    Returns (energies, densities) lists of length `bins`.
+
+    ρ̂(x) = (1/π√(1−x²)) [g_0 μ_0 + 2 Σ_{n≥1} g_n μ_n T_n(x)]
+    Energy in original units: E = (λ_max/2)(x + 1)."""
+    N = len(mu)
+    g = _jackson_kernel(N) if kernel == "jackson" else [1.0] * N
+    energies, densities = [], []
+    eps = 0.999  # keep x strictly inside (-1, 1)
+    for k in range(bins):
+        # Chebyshev nodes x_k = cos((k+0.5)π/bins) — denser near ±1
+        x = eps * math.cos((k + 0.5) * math.pi / bins)
+        # Chebyshev T_n(x) = cos(n · arccos(x))
+        ac = math.acos(x)
+        s = g[0] * mu[0]
+        for n in range(1, N):
+            s += 2 * g[n] * mu[n] * math.cos(n * ac)
+        rho_x = s / (math.pi * math.sqrt(1 - x * x))
+        E = (lam_max / 2.0) * (x + 1)
+        energies.append(E)
+        densities.append(max(rho_x, 0.0))
+    # Sort by energy ascending
+    pairs = sorted(zip(energies, densities))
+    return [p[0] for p in pairs], [p[1] for p in pairs]
+
+
+def _detect_peaks(densities, min_z=2.0, n_peaks=5):
+    """Local maxima with z-score ≥ min_z over the histogram. Returns list of
+    (index, density, z) sorted descending by density, capped at n_peaks."""
+    n = len(densities)
+    if n < 3:
+        return []
+    mean = sum(densities) / n
+    var = sum((d - mean) ** 2 for d in densities) / n
+    sd = math.sqrt(var) if var > 0 else 1.0
+    peaks = []
+    for i in range(1, n - 1):
+        if densities[i] > densities[i - 1] and densities[i] > densities[i + 1]:
+            z = (densities[i] - mean) / sd
+            if z >= min_z:
+                peaks.append((i, densities[i], z))
+    peaks.sort(key=lambda p: -p[1])
+    return peaks[:n_peaks]
+
+
+def cmd_graph_dos(kv, flags):
+    """Density of states (DOS) of the layered Laplacian via KPM.
+
+    Computes the spectral density ρ(E) of the weighted Laplacian without
+    full diagonalization, using the Kernel Polynomial Method with a
+    Jackson kernel. Identifies energies where many eigenvectors cluster
+    — the measurable signature of flat bands. Doesn't claim magic-angle
+    physics (which needs lattice geometry); reports DOS peaks as
+    'flat-band candidate' energies.
+
+    Args:
+      vault=stack | vaults=p1,p2,...     multi-vault required
+      tperp=<f>           interlayer coupling (default 1.0)
+      moments=<n>         Chebyshev moments (default 200; resolution ~λ_max/n)
+      samples=<r>         random probe vectors (default 8)
+      bins=<k>            output histogram bins (default 100)
+      peaks=<n>           top-n peaks to report (default 5)
+      kernel=jackson|none default jackson (suppresses Gibbs oscillations)"""
+    vs, err = _resolve_multi_vaults(kv)
+    if err:
+        print(f"graph dos requires multi-vault stack: {err}", file=sys.stderr)
+        return 2
+    nodes, _, intra, inter, vault_of = build_layered_graph(vs)
+    n = len(nodes)
+    if n < 3:
+        print("(stack too small)")
+        return 0
+    tperp = float(kv.get("tperp", "1.0"))
+    moments = int(kv.get("moments", "200"))
+    samples = int(kv.get("samples", "8"))
+    bins = int(kv.get("bins", "100"))
+    n_peaks = int(kv.get("peaks", "5"))
+    kernel = kv.get("kernel", "jackson")
+
+    lap_apply, _ = _make_lap_apply(intra, inter, tperp)
+
+    # λ_max — needed for spectrum rescaling. Cheap power iteration.
+    lam_max, _, _ = _weighted_lap_spectrum(intra, inter, tperp, iters=200, tol=1e-6)
+    # Inflate slightly so spectrum lies strictly inside [−1, 1]
+    lam_max_safe = lam_max * 1.01
+
+    mu = _kpm_moments(lap_apply, n, lam_max_safe, moments, samples)
+    energies, densities = _kpm_reconstruct(mu, lam_max_safe, bins, kernel=kernel)
+    peaks = _detect_peaks(densities, min_z=2.0, n_peaks=n_peaks)
+
+    intra_e = sum(len(s) for s in intra) // 2
+    inter_e = sum(len(s) for s in inter) // 2
+    layers = {v: sum(1 for vo in vault_of if vo == v) for v in vs}
+    layer_str = ", ".join(f"{v.name}:{layers[v]}" for v in vs)
+
+    print(f"[DOS] stack n={len(vs)} layers=({layer_str})")
+    print(f"  intra_e={intra_e} inter_e={inter_e} tperp={tperp}")
+    print(f"  λ_max≈{lam_max:.4f}  moments={moments} samples={samples} bins={bins} kernel={kernel}")
+    print()
+    print(f"  {'E':>8}  {'ρ(E)':>8}  marker")
+    peak_idxs = {p[0] for p in peaks}
+    for i, (E, d) in enumerate(zip(energies, densities)):
+        marker = "  ← peak" if i in peak_idxs else ""
+        if "verbose" in flags or i in peak_idxs or i % max(1, bins // 25) == 0:
+            print(f"  {E:>8.4f}  {d:>8.4f}{marker}")
+    print()
+    if peaks:
+        print(f"  → {len(peaks)} DOS peak(s) (flat-band candidates):")
+        for i, d, z in peaks:
+            print(f"     E≈{energies[i]:.4f}  ρ≈{d:.4f}  z={z:.2f}")
+    else:
+        print("  → no peaks above z≥2 — spectrum is smooth (no flat-band candidates at this resolution)")
     return 0
 
 
@@ -1441,12 +1628,13 @@ COMMANDS = {
     "graph:dirac": cmd_graph_dirac,
     "graph:spectrum": cmd_graph_spectrum,
     "graph:layered": cmd_graph_layered,
+    "graph:dos": cmd_graph_dos,
     "moire": cmd_moire,
     "health": cmd_health,
 }
 
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 
 def main():

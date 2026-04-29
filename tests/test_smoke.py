@@ -342,3 +342,68 @@ def test_layered_parse_sweep():
     import pytest
     with pytest.raises(ValueError):
         dg._parse_sweep("0,1")
+
+
+def test_dos_requires_multi_vault(tmp_path):
+    reset_caches()
+    vault = make_vault(tmp_path / "vault")
+    import sys, io
+    saved = sys.argv[:]
+    sys.argv = ["graphene", "graph", "dos", f"vault={vault}"]
+    err = io.StringIO()
+    from contextlib import redirect_stderr
+    try:
+        with redirect_stderr(err):
+            rc = dg.main()
+    finally:
+        sys.argv = saved
+    assert rc == 2
+    assert "multi-vault" in err.getvalue()
+
+
+def test_dos_runs_on_two_vault_stack(tmp_path):
+    reset_caches()
+    a, b = make_two_vaults(tmp_path)
+    out = run([
+        "graph", "dos", f"vaults={a},{b}",
+        "moments=40", "samples=2", "bins=20",
+    ])
+    assert "[DOS]" in out
+    assert "λ_max" in out
+    assert "moments=40" in out
+    # density column header
+    assert "ρ(E)" in out
+
+
+def test_jackson_kernel_first_term_one_and_decreasing():
+    g = dg._jackson_kernel(50)
+    # g[0] should equal 1 by construction
+    assert abs(g[0] - 1.0) < 1e-12
+    # Coefficients are non-negative and monotonically non-increasing
+    assert all(gi >= 0 for gi in g)
+    for i in range(1, len(g)):
+        assert g[i] <= g[i - 1] + 1e-12
+
+
+def test_detect_peaks_finds_clear_max():
+    # Synthetic DOS with one clear peak at index 5
+    densities = [0.1, 0.1, 0.1, 0.2, 0.5, 1.5, 0.5, 0.2, 0.1, 0.1]
+    peaks = dg._detect_peaks(densities, min_z=1.0, n_peaks=3)
+    assert len(peaks) >= 1
+    assert peaks[0][0] == 5
+    assert peaks[0][1] == 1.5
+
+
+def test_kpm_reconstruct_returns_sorted_energies():
+    # Trivial moments: μ_0=1, all others=0 → DOS proportional to 1/π√(1-x²)
+    # (the Chebyshev measure). Should integrate finitely; sorted output.
+    mu = [1.0] + [0.0] * 49
+    energies, densities = dg._kpm_reconstruct(mu, lam_max=10.0, bins=30, kernel="none")
+    assert len(energies) == 30
+    assert len(densities) == 30
+    assert energies == sorted(energies)
+    # All densities non-negative
+    assert all(d >= 0 for d in densities)
+    # Energies span [0, ~10]
+    assert energies[0] >= 0
+    assert energies[-1] <= 10.5

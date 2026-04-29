@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-04-28
+
+The flat-band detector. v0.3.0 made interlayer coupling sweepable and
+reported λ_max + Fiedler + IPR. v0.3.1 adds the **full spectral density
+ρ(E)** via KPM (Kernel Polynomial Method) — the standard condensed-
+matter tool for DOS in tight-binding models, used widely in real
+disordered-graphene calculations. DOS peaks are the operator-level
+signature of flat bands, computed honestly without invoking lattice
+geometry we don't have.
+
+### Added
+
+- **`graph dos`** command. Multi-vault only.
+  - `tperp=<f>` — interlayer coupling (default 1.0)
+  - `moments=<n>` — Chebyshev expansion order (default 200)
+  - `samples=<r>` — random probe vectors for trace estimator (default 8)
+  - `bins=<k>` — output histogram resolution (default 100)
+  - `peaks=<n>` — top-N peaks reported (default 5, threshold z ≥ 2)
+  - `kernel=jackson|none` — default jackson (suppresses Gibbs oscillations)
+  - `verbose` — print every bin (default samples evenly)
+- **`_kpm_moments` helper.** Stochastic Chebyshev moments via Rademacher
+  random vectors and the standard 3-term recurrence.
+- **`_kpm_reconstruct` helper.** Reconstructs ρ(E) at arbitrary bins using
+  Chebyshev nodes (denser sampling near band edges).
+- **`_jackson_kernel` helper.** Closed-form Jackson kernel coefficients;
+  `g[0] = 1`, monotonically non-increasing.
+- **`_detect_peaks` helper.** Local-maxima detection with z-score
+  thresholding.
+- **`_resolve_multi_vaults(kv)` helper.** Centralized resolution of
+  `vault=stack` / `vault=*` / `vaults=p1,p2,...`. Used by both
+  `graph layered` and `graph dos`.
+- **5 new tests**: multi-vault required, runs on a 2-vault fixture,
+  Jackson kernel shape, peak detection on synthetic DOS, and KPM
+  reconstruction sanity (sorted output, non-negative density).
+
+### Changed
+
+- **Refactor**: extracted `_make_lap_apply(intra, inter, tperp)` factory
+  used by `_weighted_lap_spectrum` and the new KPM moment computation.
+  No behavior change.
+- Top-level docstring lists `graph dos`.
+
 ## [0.3.0] — 2026-04-28
 
 The graphite extension. v0.2 made cross-source wikilinks resolve and
