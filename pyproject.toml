@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "diracs-graphene"
-version = "0.4.0"
-description = "Graph-theoretic CLI for any folder of [[wikilinked]] markdown — sublattices, Dirac points, Fiedler value, multi-source stack analysis. Works on Obsidian, Logseq, Roam, Foam, Dendron, Quartz, plain Zettelkasten."
+name = "grapheine"
+version = "0.5.0"
+description = "Graph-theoretic CLI for any folder of [[wikilinked]] markdown — sublattices, Dirac points, Fiedler value, density of states, sublattice-resolved interlayer coupling. Pure stdlib. Works on Obsidian, Logseq, Roam, Foam, Dendron, Quartz, plain Zettelkasten."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
@@ -22,10 +22,13 @@ keywords = [
     "wikilinks",
     "graph-theory",
     "spectral-graph",
-    "dirac",
+    "tight-binding",
     "bipartite",
     "honeycomb",
     "fiedler",
+    "kpm",
+    "density-of-states",
+    "graphein",
     "cli",
     "pkm",
     "markdown",
@@ -49,18 +52,19 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Text Processing :: Markup :: Markdown",
     "Topic :: Utilities",
 ]
 
 [project.urls]
-Homepage = "https://github.com/loross14/diracs-graphene"
-Repository = "https://github.com/loross14/diracs-graphene"
-Issues = "https://github.com/loross14/diracs-graphene/issues"
-Changelog = "https://github.com/loross14/diracs-graphene/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/loross14/Grapheine"
+Repository = "https://github.com/loross14/Grapheine"
+Issues = "https://github.com/loross14/Grapheine/issues"
+Changelog = "https://github.com/loross14/Grapheine/blob/main/CHANGELOG.md"
 
 [project.scripts]
-graphene = "diracs_graphene:main"
+grapheine = "grapheine:main"
 
 [project.optional-dependencies]
 dev = [
@@ -71,7 +75,7 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["diracs_graphene"]
+py-modules = ["grapheine"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

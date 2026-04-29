@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-04-28
+
+**Renamed: `Dirac's Graphene` → `Grapheine`.** Same chemistry, sharper
+namespace. The trailing *-eine* comes from Greek **γράφειν** (*graphein*,
+"to write") — the etymological root of `graph`, `grapheme`, `grammar`,
+and `paragraph`. The naming move is load-bearing: the lattice this tool
+exposes is the *written* one.
+
+The rename also clears every namespace collision flagged in v0.2.0's
+"What this isn't" — `graphene-python` (GraphQL library), `libgraphene`
+(GNOME math library), `dirac-graph` (spectral geometry library), and
+the `obsidian-graphene` plugin by suniyao. `grapheine` is a clean
+namespace island. The old GitHub URL
+(`loross14/diracs-graphene`) redirects to `loross14/Grapheine`.
+
+### Renamed
+- **PyPI package**: `diracs-graphene` → `grapheine`.
+- **Module**: `diracs_graphene.py` → `grapheine.py`.
+- **Console script**: `graphene` → `grapheine`. (Both the entry-point
+  name in `pyproject.toml` and the binary placed on `PATH`.)
+- **Banner**: `[GRAPHENE]` → `[GRAPHEINE]` in the `health` output.
+- **Default-vault env var**: `GRAPHENE_VAULT` → `GRAPHEINE_VAULT`.
+  Legacy `GRAPHENE_VAULT` and `OBSIDIAN_VAULT` are still honored, in
+  that fallback order, for backwards compatibility.
+- **Repository**: `github.com/loross14/diracs-graphene` →
+  `github.com/loross14/Grapheine`. Old URL redirects.
+
+### Changed
+- **README rewrite**: title, install command, all examples, and the
+  "What this isn't" section trimmed to just two real adjacencies
+  (`graphene-python` and the `obsidian-graphene` plugin) — most prior
+  collisions evaporated with the rename.
+- **Top-level docstring**: opens with the γράφειν etymology and the
+  framing that the lattice is the written one.
+- **Tests**: `import diracs_graphene as dg` → `import grapheine as dg`,
+  `argv[0]` from `"graphene"` → `"grapheine"`, banner assertion
+  `[GRAPHENE]` → `[GRAPHEINE]`.
+
+### Compatibility
+- Existing installs of `diracs-graphene` v0.4.0 keep working; nothing
+  is auto-uninstalled. To migrate: `pip install --user --upgrade
+  git+https://github.com/loross14/Grapheine` and remove the old
+  package: `pip uninstall diracs-graphene` (the old console script
+  `graphene` will linger until you do).
+- The `companion graphite` write-side tool on the roadmap keeps its
+  name unchanged.
+
 ## [0.4.0] — 2026-04-28
 
 The Bistritzer–MacDonald analog. v0.3.x made `t⊥` sweepable and added

@@ -1,6 +1,8 @@
-# Dirac's Graphene — a tight-binding CLI for knowledge graphs
+# Grapheine — a tight-binding CLI for knowledge graphs
 
 **Graph-theoretic CLI for any folder of `[[wikilinked]]` markdown.**
+
+From Greek **γράφειν** (*graphein*, "to write") — the shared root of `graph`, `grapheme`, `grammar`, `paragraph`. The lattice this tool exposes is the *written* one.
 
 Works on Obsidian vaults, Logseq graphs, Roam exports, Foam, Dendron, Quartz, Hugo content trees, Notion `.md` exports, plain Zettelkasten — anything with `[[name]]` or `[text](file.md)` references between markdown files.
 
@@ -10,39 +12,39 @@ Pure stdlib Python. No app, no plugin, no daemon, no REST.
 
 ## Why this exists
 
-Most knowledge-graph CLIs stop at backlinks and orphans. `graphene` adds the layer that isn't elsewhere:
+Most knowledge-graph CLIs stop at backlinks and orphans. `grapheine` adds the layer that isn't elsewhere:
 
 - **Cross-source wikilink resolution.** Point it at multiple folders (or all your registered Obsidian vaults at once) and links resolve across sources. Genuinely uncontested — Obsidian itself doesn't support cross-vault internal links.
-- **Spectral & topological metrics.** Girth, bipartite test with sublattice sizes, Fiedler value (algebraic connectivity), Dirac-point candidates. None of these are exposed by the official Obsidian CLI, by `obsidiantools`, by `obsidian-cli-ops`, or by `obra/knowledge-graph`.
+- **Spectral & topological metrics.** Girth, bipartite test with sublattice sizes, Fiedler value (algebraic connectivity), Dirac-point candidates, density of states via KPM, sublattice-resolved interlayer coupling.
 - **No app required.** Reads your folder directly. Doesn't launch Obsidian, doesn't need a plugin, doesn't need Node, doesn't need a REST endpoint.
 
 ## Quick start
 
 ```bash
 # install (single command, no clone needed)
-pip install --user git+https://github.com/loross14/diracs-graphene
+pip install --user git+https://github.com/loross14/Grapheine
 
 # or from a clone
-git clone https://github.com/loross14/diracs-graphene
-cd diracs-graphene
+git clone https://github.com/loross14/Grapheine
+cd Grapheine
 pip install --user .
 ```
 
-> If `graphene` isn't found after install, ensure `~/.local/bin` is on your `PATH`.
+> If `grapheine` isn't found after install, ensure `~/.local/bin` is on your `PATH`.
 > Windows: `pip install` is the recommended path; the POSIX-style copy/`chmod` recipe won't work on PowerShell/cmd.
 
 Three commands, three outputs:
 
 ```bash
-$ graphene vaults
+$ grapheine vaults
 gitmoney
 notes
 research
 
-$ graphene health vault=notes
-[GRAPHENE] notes: nodes=512 edges=1834 ⟨k⟩=7.16 orphans=89 isolates=42 unresolved=27 tags=63 bipartite=false A/B=204/308
+$ grapheine health vault=notes
+[GRAPHEINE] notes: nodes=512 edges=1834 ⟨k⟩=7.16 orphans=89 isolates=42 unresolved=27 tags=63 bipartite=false A/B=204/308
 
-$ graphene graph degree vault=notes top=5
+$ grapheine graph degree vault=notes top=5
 nodes=512 edges=1834 mean_deg=7.165 median_deg=4 max_deg=78
 isolated=42 deg=1:91 deg=2:67 deg=3:48 deg≥10:96
 --- top-5 hubs ---
@@ -53,24 +55,24 @@ isolated=42 deg=1:91 deg=2:67 deg=3:48 deg≥10:96
     37  people.md
 ```
 
-## Pointing graphene at any folder
+## Pointing grapheine at any folder
 
-`graphene` works on any directory of markdown — Obsidian registry not required:
+`grapheine` works on any directory of markdown — Obsidian registry not required:
 
 ```bash
 # any folder
-graphene health vault=/path/to/your/notes
-graphene graph degree vault=~/zettelkasten
+grapheine health vault=/path/to/your/notes
+grapheine graph degree vault=~/zettelkasten
 
 # Obsidian users: shortcut by registered name
-graphene health vault=gitmoney
+grapheine health vault=gitmoney
 
 # multi-source stack (every leaf vault registered with Obsidian)
-graphene health vault=stack
+grapheine health vault=stack
 
-# default: set GRAPHENE_VAULT (or OBSIDIAN_VAULT for backwards compat)
-export GRAPHENE_VAULT=/path/to/your/notes
-graphene health
+# default: set GRAPHEINE_VAULT (legacy GRAPHENE_VAULT and OBSIDIAN_VAULT still honored)
+export GRAPHEINE_VAULT=/path/to/your/notes
+grapheine health
 ```
 
 The Obsidian shortcut auto-detects the registry at:
@@ -93,11 +95,11 @@ A wikilink graph has the same shape, structurally:
 - **Bonds = wikilinks.** Each `[[link]]` is an edge.
 - **Sublattices = bipartite 2-coloring.** When the graph is bipartite, the two color classes act as A/B.
 - **Dirac-point candidates = high-degree nodes whose neighborhoods are balanced across sublattices.** Where the two halves of your graph touch.
-- **Stack mode = bilayer-style overlay.** Multiple folders/vaults stacked; cross-source wikilinks become interlayer bonds.
+- **Stack mode = layered tight-binding.** Multiple folders/vaults stacked; cross-source wikilinks become interlayer bonds with explicit, sweepable coupling.
 
 **This isn't metaphor — same Hamiltonian.** The graphene nearest-neighbor tight-binding Hamiltonian, `H = -t Σ_{<i,j>} (a_i† b_j + h.c.)`, is the bipartite adjacency operator. Run it on any bipartite graph and you get the same chiral symmetry, the same anticommutation with the sublattice operator σ_z, the same spectrum in ±E pairs. The lattice constant differs (graphene has 3-regular periodicity; your wikilink graph doesn't), so the *spectrum* differs in detail — but the *operator* is the operator. "Dirac-point candidates" means high-degree nodes whose neighborhoods balance the two sublattices: where the operator's two halves touch.
 
-Stack mode is the **stacked-bilayer Hamiltonian**: each source is a sheet, intra-source wikilinks are intra-layer hopping, cross-source wikilinks are interlayer hopping. The operator form is exact. What we *don't* compute is twist angle, moiré pattern, or magic-angle flat bands — those need lattice geometry the source folders don't have. Cross-sheet Dirac scoring uses Shannon-entropy × degree to find bridges; same operator, different lattice.
+Stack mode is the **layered tight-binding Hamiltonian**: each source is a sheet, intra-source wikilinks are intra-layer hopping, cross-source wikilinks are interlayer hopping. The operator form is exact. `graph layered` makes the interlayer coupling `t⊥` an explicit, sweepable parameter. `graph dos` computes the spectral density via the Kernel Polynomial Method (the standard condensed-matter tool). `graph sublattice` resolves the interlayer coupling by sublattice pair (`t_aa`, `t_bb`, `t_ab`) — the closest honest graph-theoretic cousin of TBG's Bistritzer–MacDonald magic-angle ratio. What we *don't* compute is twist angle, moiré supercell, or magic-angle flat bands — those need lattice geometry the source folders don't have.
 
 > If you don't care about the chemistry, skip to **Commands** — the math works regardless.
 
@@ -106,55 +108,57 @@ Stack mode is the **stacked-bilayer Hamiltonian**: each source is a sheet, intra
 ### Basic
 
 ```bash
-graphene vaults                                        # list registered Obsidian vaults
-graphene vault info=name                               # current source info
-graphene read file=note-name                           # print a note's content
-graphene backlinks file=note-name [counts]             # what links to this note
-graphene links file=note-name                          # what this note links to
-graphene unresolved [verbose]                          # broken wikilinks
-graphene orphans                                       # files with no incoming links
-graphene aliases [file=note-name]                      # frontmatter aliases
-graphene tags [counts] [sort=count]                    # tag distribution
-graphene tag name=tagname [verbose]                    # files tagged with X
-graphene search query="text" [path=dir] [limit=N]
-graphene search:context query="text" [limit=N]         # with line context
-graphene tasks [todo|done] [file=note-name|daily]
-graphene properties file=note-name                     # frontmatter
-graphene property:get name=key file=note-name
+grapheine vaults                                       # list registered Obsidian vaults
+grapheine vault info=name                              # current source info
+grapheine read file=note-name                          # print a note's content
+grapheine backlinks file=note-name [counts]            # what links to this note
+grapheine links file=note-name                         # what this note links to
+grapheine unresolved [verbose]                         # broken wikilinks
+grapheine orphans                                      # files with no incoming links
+grapheine aliases [file=note-name]                     # frontmatter aliases
+grapheine tags [counts] [sort=count]                   # tag distribution
+grapheine tag name=tagname [verbose]                   # files tagged with X
+grapheine search query="text" [path=dir] [limit=N]
+grapheine search:context query="text" [limit=N]        # with line context
+grapheine tasks [todo|done] [file=note-name|daily]
+grapheine properties file=note-name                    # frontmatter
+grapheine property:get name=key file=note-name
 ```
 
 ### Graph math
 
 ```bash
-graphene graph degree [top=N]      # degree distribution + top hubs
-graphene graph hubs [top=N]        # top-N nodes by degree
-graphene graph triangles           # 3-cycles (honeycomb has 0)
-graphene graph clustering          # average local clustering coefficient
-graphene graph girth               # shortest cycle (honeycomb=6)
-graphene graph bipartite           # 2-color test; sublattice sizes
-graphene graph components          # connected components
-graphene graph density             # |E| / (|V|·(|V|-1)/2)
-graphene graph dirac [top=N]       # Dirac-point candidates (bridges)
-graphene graph spectrum            # λ_max + Fiedler value (algebraic connectivity)
-graphene graph layered ...         # bilayer Hamiltonian, t⊥-sweep, IPR (multi-vault only)
-graphene graph dos ...             # density of states via KPM (flat-band detector, multi-vault only)
-graphene graph sublattice ...      # sublattice-resolved coupling sweep (BM analog, multi-vault only)
+grapheine graph degree [top=N]      # degree distribution + top hubs
+grapheine graph hubs [top=N]        # top-N nodes by degree
+grapheine graph triangles           # 3-cycles (honeycomb has 0)
+grapheine graph clustering          # average local clustering coefficient
+grapheine graph girth               # shortest cycle (honeycomb=6)
+grapheine graph bipartite           # 2-color test; sublattice sizes
+grapheine graph components          # connected components
+grapheine graph density             # |E| / (|V|·(|V|-1)/2)
+grapheine graph dirac [top=N]       # Dirac-point candidates (bridges)
+grapheine graph spectrum            # λ_max + Fiedler value (algebraic connectivity)
+grapheine graph layered ...         # bilayer Hamiltonian, t⊥-sweep, IPR (multi-vault only)
+grapheine graph dos ...             # density of states via KPM (flat-band detector, multi-vault only)
+grapheine graph sublattice ...      # sublattice-resolved coupling sweep (BM analog, multi-vault only)
 ```
 
 ### Multi-source stack
 
 ```bash
-graphene health vault=stack                       # fingerprint across leaf vaults
-graphene moire                                    # pairwise overlap (shared stems, Jaccard)
-graphene graph dirac vault=stack                  # cross-source Dirac points
-graphene graph layered vault=stack                # bilayer Hamiltonian, t⊥=1
-graphene graph layered vault=stack sweep=0,2,9    # sweep interlayer coupling
-graphene graph layered vaults=/path/a,/path/b     # without an Obsidian registry
+grapheine health vault=stack                       # fingerprint across leaf vaults
+grapheine moire                                    # pairwise overlap (shared stems, Jaccard)
+grapheine graph dirac vault=stack                  # cross-source Dirac points
+grapheine graph layered vault=stack                # bilayer Hamiltonian, t⊥=1
+grapheine graph layered vault=stack sweep=0,2,9    # sweep interlayer coupling
+grapheine graph layered vaults=/path/a,/path/b     # without an Obsidian registry
+grapheine graph dos vault=stack                    # density of states (flat-band detector)
+grapheine graph sublattice vault=stack sweep=0,2,9 # BM-analog ratio sweep
 ```
 
 `vault=stack` is the safe glob-free form of `vault=*`. Selects every leaf vault registered with Obsidian (vaults that don't contain another registered vault). Use `vault=every` to include parent/wrapper vaults too.
 
-`vaults=p1,p2,p3` is the explicit alternative — comma-separated paths, no registry needed. Currently honored by `graph layered`; other multi-vault commands still take `vault=stack`.
+`vaults=p1,p2,p3` is the explicit alternative — comma-separated paths, no registry needed. Currently honored by `graph layered`, `graph dos`, and `graph sublattice`; other multi-vault commands still take `vault=stack`.
 
 If your shell expands `*` (zsh/bash usually do), quote it: `vault='*'`.
 
@@ -164,13 +168,13 @@ If your shell expands `*` (zsh/bash usually do), quote it: `vault='*'`.
 
 ```bash
 # single coupling
-graphene graph layered vault=stack tperp=1.0 top=10
+grapheine graph layered vault=stack tperp=1.0 top=10
 
 # sweep the coupling and watch the spectrum move
-graphene graph layered vault=stack sweep=0,2,9
+grapheine graph layered vault=stack sweep=0,2,9
 
 # verbose: also print the localized notes at peak IPR
-graphene graph layered vault=stack sweep=0,2,9 verbose
+grapheine graph layered vault=stack sweep=0,2,9 verbose
 ```
 
 | Output field | Meaning |
@@ -191,13 +195,13 @@ graphene graph layered vault=stack sweep=0,2,9 verbose
 
 ```bash
 # default: 200 moments, 8 random probe vectors, 100 output bins
-graphene graph dos vault=stack tperp=1.0
+grapheine graph dos vault=stack tperp=1.0
 
 # faster preview
-graphene graph dos vault=stack moments=120 samples=4 bins=80
+grapheine graph dos vault=stack moments=120 samples=4 bins=80
 
 # print every bin instead of every Nth + peaks
-graphene graph dos vault=stack moments=200 verbose
+grapheine graph dos vault=stack moments=200 verbose
 ```
 
 | Output field | Meaning |
@@ -222,13 +226,13 @@ The closest **honest** graph-theoretic cousin of the Bistritzer–MacDonald magi
 
 ```bash
 # fixed sublattice weights
-graphene graph sublattice vault=stack t_aa=0.8 t_ab=1.0
+grapheine graph sublattice vault=stack t_aa=0.8 t_ab=1.0
 
 # BM-style ratio sweep — find spectral pinch points in α
-graphene graph sublattice vault=stack sweep=0,2,9
+grapheine graph sublattice vault=stack sweep=0,2,9
 
 # verbose: print top-N localized notes (with their sublattice label) at peak α
-graphene graph sublattice vault=stack sweep=0,2,9 verbose top=10
+grapheine graph sublattice vault=stack sweep=0,2,9 verbose top=10
 ```
 
 **The honest non-claim.** This is not a Bistritzer–MacDonald calculation. We don't have lattice geometry; there's no Brillouin zone, no twist angle, no moiré supercell. What transfers is the **operator algebra**: same Hamiltonian decomposition, same sublattice-resolved coupling matrix, same Fiedler/IPR diagnostics. `graph sublattice` reports peaks in `n·IPR` as α varies — those are the operator-level cousins of the BM magic ratio. If you find a non-trivial α\* that pinches the algebraic-connectivity mode onto a small, sublattice-coherent set of notes, you've found the **operator's structural analog** of magic-angle behaviour. Whether anything physical or epistemic happens at that α\* on your graph is an empirical question the tool can't answer for you.
@@ -243,6 +247,8 @@ graphene graph sublattice vault=stack sweep=0,2,9 verbose top=10
 | `bipartite` | true | If false, no clean 2-coloring; sublattices not separable |
 | `Fiedler λ_2` | "healthy" > 0.05 | Near zero = bottleneck; large = well-connected |
 | `Dirac score` | high = strong bridge | `balance × degree` (single) or `entropy × degree` (stack) |
+| `IPR` | n·IPR ≈ 1 = uniform | Higher = Fiedler mode pinches onto fewer notes |
+| `DOS peak` | sharper = flatter band | Energies where many eigenvectors cluster |
 
 A real knowledge graph rarely matches the clean honeycomb. The metrics tell you how far you are from it — and which notes anchor the structure.
 
@@ -275,23 +281,24 @@ Both `tags`/`tag` and `aliases`/`alias` keys are recognized. CRLF line endings (
 
 | Symptom | Fix |
 |---|---|
-| `vault not found` | Pass an explicit path: `graphene health vault=/abs/path/to/folder`. Or check `graphene vaults` to list registered Obsidian vaults. |
+| `vault not found` | Pass an explicit path: `grapheine health vault=/abs/path/to/folder`. Or check `grapheine vaults` to list registered Obsidian vaults. |
 | `(no vaults registered — is Obsidian installed?)` | You don't have an Obsidian config. Use `vault=/path/to/folder` instead of relying on the registry. |
-| `command not found: graphene` | Ensure your install location (e.g. `~/.local/bin`) is on `PATH`. Try `python3 -m diracs_graphene <command>` to bypass. |
+| `command not found: grapheine` | Ensure your install location (e.g. `~/.local/bin`) is on `PATH`. Try `python3 -m grapheine <command>` to bypass. |
 | Linux Flatpak / Snap users see no vaults | Auto-detection covers native paths only. Pass `vault=/path/to/folder` directly. |
-| `graphene graph spectrum` reports negative Fiedler | Phase-1 power iteration undershot λ_max. Increase `iters=200` or run on a smaller subgraph (`vault=specific-folder`). |
+| `grapheine graph spectrum` reports negative Fiedler | Phase-1 power iteration undershot λ_max. Increase `iters=200` or run on a smaller subgraph (`vault=specific-folder`). |
 
 ## What this isn't
 
-- **Not affiliated with `graphene` (graphene-python)** — the GraphQL library on PyPI. We're a *console script* named `graphene`; they're a Python library you import as `import graphene`. No collision at the binary layer (graphene-python doesn't install a CLI), but if you've never heard of either before today, the names overlap. Different ecosystem, different namespace.
-- **Not affiliated with `DIRAC`** — the HEP distributed-computing framework on PyPI (`pip install dirac`). They ship hundreds of `dirac-*` console scripts; we ship a single `graphene` for graph queries.
+- **Not affiliated with the GraphQL `graphene-python` library** on PyPI. We're `grapheine` (with the trailing *-eine*); they're `graphene` (with the trailing *-ene*). Different name, different ecosystem.
+- **Not affiliated with `DIRAC`** — the HEP distributed-computing framework on PyPI (`pip install dirac`). They ship hundreds of `dirac-*` console scripts; we ship a single `grapheine`.
 - **Not affiliated with `dirac-graph`** — the computational spectral geometry library by `pulquero`. Adjacent territory, different scope.
-- **Not affiliated with the `obsidian-graphene` Obsidian plugin** by `suniyao` (vector-embedding graph view).
-- **Not affiliated with `libgraphene`** — the GNOME math/geometry library shipped via Homebrew. They install library files only, no `graphene` binary.
+- **Not affiliated with the `obsidian-graphene` Obsidian plugin** by `suniyao` (vector-embedding graph view inside Obsidian). They invent edges from LLM embeddings; we run tight-binding operators on the literal `[[wikilink]]` graph.
+
+The trailing *-eine* (γράφειν) is the disambiguating suffix. It's both a Greek root that ties to writing and a clean namespace island in the PyPI / Obsidian / GitHub neighborhood.
 
 ## Roadmap
 
-`graphene` is the **read-side** tool — it observes the lattice. A planned companion `graphite` will be the **write-side**: stub unresolved wikilinks, suggest cross-sheet bonds, propagate frontmatter conventions. Pencil on paper, mineral on lattice. Same chemistry, opposite gradient.
+`grapheine` is the **read-side** tool — it observes the lattice. A planned companion `graphite` will be the **write-side**: stub unresolved wikilinks, suggest cross-sheet bonds, propagate frontmatter conventions. Pencil on paper, mineral on lattice. Same chemistry, opposite gradient.
 
 ## License
 

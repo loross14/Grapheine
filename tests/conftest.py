@@ -1,4 +1,4 @@
-"""Make `diracs_graphene` importable from tests without requiring an editable install."""
+"""Make `grapheine` importable from tests without requiring an editable install."""
 from __future__ import annotations
 
 import sys

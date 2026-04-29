@@ -1,4 +1,4 @@
-"""Smoke tests for diracs_graphene.
+"""Smoke tests for grapheine.
 
 These tests build small fixture vaults under tmp_path and exercise the core
 read-side commands and graph metrics. No Obsidian registry needed — every
@@ -10,7 +10,7 @@ import io
 from contextlib import redirect_stdout
 from pathlib import Path
 
-import diracs_graphene as dg
+import grapheine as dg
 
 
 def write(p: Path, content: str, *, crlf: bool = False) -> None:
@@ -71,11 +71,11 @@ def make_vault(root: Path) -> Path:
 
 
 def run(args: list[str]) -> str:
-    """Run dirac.main() with argv and capture stdout."""
+    """Run grapheine.main() with argv and capture stdout."""
     import sys
 
     saved = sys.argv[:]
-    sys.argv = ["graphene", *args]
+    sys.argv = ["grapheine", *args]
     buf = io.StringIO()
     try:
         with redirect_stdout(buf):
@@ -99,7 +99,7 @@ def test_health_basic(tmp_path):
     reset_caches()
     vault = make_vault(tmp_path / "vault")
     out = run(["health", f"vault={vault}"])
-    assert "[GRAPHENE]" in out
+    assert "[GRAPHEINE]" in out
     assert "nodes=" in out
     assert "edges=" in out
 
@@ -233,13 +233,13 @@ def test_markdown_style_link_resolves_as_edge(tmp_path):
 def test_help_does_not_crash(tmp_path):
     reset_caches()
     out = run(["--help"])
-    assert "graphene" in out
+    assert "grapheine" in out
 
 
 def test_version():
     reset_caches()
     out = run(["--version"])
-    assert "graphene" in out
+    assert "grapheine" in out
     assert dg.__version__ in out
 
 
@@ -266,7 +266,7 @@ def test_layered_requires_multi_vault(tmp_path):
     vault = make_vault(tmp_path / "vault")
     import sys, io
     saved = sys.argv[:]
-    sys.argv = ["graphene", "graph", "layered", f"vault={vault}"]
+    sys.argv = ["grapheine", "graph", "layered", f"vault={vault}"]
     err = io.StringIO()
     from contextlib import redirect_stderr
     try:
@@ -314,7 +314,7 @@ def test_layered_zero_interlayer_warns(tmp_path):
     write(a / "n2.md", "# A2\n")
     write(b / "m1.md", "# B1\n[[m2]]\n")
     write(b / "m2.md", "# B2\n")
-    # Only way to point graphene at both is via two vault= args, but the CLI
+    # Only way to point grapheine at both is via two vault= args, but the CLI
     # takes a single vault=; resolve_targets only returns multi for the
     # registry-* shortcut. Test the build_layered_graph helper directly.
     nodes, idx, intra, inter, vault_of = dg.build_layered_graph([a, b])
@@ -349,7 +349,7 @@ def test_dos_requires_multi_vault(tmp_path):
     vault = make_vault(tmp_path / "vault")
     import sys, io
     saved = sys.argv[:]
-    sys.argv = ["graphene", "graph", "dos", f"vault={vault}"]
+    sys.argv = ["grapheine", "graph", "dos", f"vault={vault}"]
     err = io.StringIO()
     from contextlib import redirect_stderr
     try:
@@ -417,7 +417,7 @@ def test_sublattice_requires_multi_vault(tmp_path):
     vault = make_vault(tmp_path / "vault")
     import sys, io
     saved = sys.argv[:]
-    sys.argv = ["graphene", "graph", "sublattice", f"vault={vault}"]
+    sys.argv = ["grapheine", "graph", "sublattice", f"vault={vault}"]
     err = io.StringIO()
     from contextlib import redirect_stderr
     try:

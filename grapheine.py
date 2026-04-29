@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""graphene — graph-theoretic CLI for any folder of [[wikilinked]] markdown.
+"""grapheine — graph-theoretic CLI for any folder of [[wikilinked]] markdown.
 
-Your knowledge graph is a 2D lattice: notes as atoms, [[links]] as bonds.
-This tool exposes the lattice — degree distribution, sublattices, cycles,
-Dirac-point candidates (high-balance bridges), Fiedler value (algebraic
-connectivity), and multi-source stack analysis.
+From Greek γράφειν (graphein, "to write"). The shared root of `graph`,
+`grapheme`, `grammar`, `paragraph`. The lattice exposed here is the
+written one — notes as atoms, [[links]] as bonds.
+
+Your knowledge graph is a 2D lattice: notes are sp²-style nodes, links
+are bonds. This tool exposes the lattice — degree distribution,
+sublattices, cycles, Dirac-point candidates (high-balance bridges),
+Fiedler value (algebraic connectivity), density of states, and
+sublattice-resolved interlayer coupling on a multi-source stack.
 
 Works on Obsidian, Logseq, Roam, Foam, Dendron, Quartz, Hugo content
 trees, Notion exports, plain Zettelkasten, or any directory of `.md`
@@ -23,7 +28,8 @@ Resolution:
   - Stack mode: vault=stack (or `*` if quoted) selects every leaf
     Obsidian vault for cross-source analysis.
   - vault=every includes parent/wrapper vaults too.
-  - Set GRAPHENE_VAULT or OBSIDIAN_VAULT to change the default.
+  - Set GRAPHEINE_VAULT (or legacy GRAPHENE_VAULT, OBSIDIAN_VAULT) to
+    change the default.
 
 Commands:
   vaults [verbose]
@@ -147,7 +153,11 @@ def load_registry():
 
 
 def _default_vault_name():
-    return os.environ.get("GRAPHENE_VAULT") or os.environ.get("OBSIDIAN_VAULT")
+    return (
+        os.environ.get("GRAPHEINE_VAULT")
+        or os.environ.get("GRAPHENE_VAULT")
+        or os.environ.get("OBSIDIAN_VAULT")
+    )
 
 
 def resolve_vault(name):
@@ -1843,7 +1853,7 @@ def cmd_health(kv, flags):
         return 2
     multi = len(vs) > 1
     if multi:
-        print(f"[GRAPHENE] stack n={len(vs)}")
+        print(f"[GRAPHEINE] stack n={len(vs)}")
         agg_e = 0
         for v in vs:
             adj = build_undirected_graph(v)
@@ -1876,7 +1886,7 @@ def cmd_health(kv, flags):
     b = sum(1 for c in color.values() if c == 1)
     bip = "true" if odd is None else "false"
     mean_deg = (2 * e / n) if n else 0
-    print(f"[GRAPHENE] {vault.name}: nodes={n} edges={e} ⟨k⟩={mean_deg:.2f} "
+    print(f"[GRAPHEINE] {vault.name}: nodes={n} edges={e} ⟨k⟩={mean_deg:.2f} "
           f"orphans={orphans_n} isolates={isolates} unresolved={len(unresolved)} "
           f"tags={len(counter)} bipartite={bip} A/B={a}/{b}")
     return 0
@@ -1918,7 +1928,7 @@ COMMANDS = {
 }
 
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 
 def main():
@@ -1933,7 +1943,7 @@ def main():
         print(__doc__)
         return 0
     if cmd == "--version":
-        print(f"graphene {__version__}")
+        print(f"grapheine {__version__}")
         return 0
     if cmd not in COMMANDS:
         print(f"unknown command: {cmd}", file=sys.stderr)
